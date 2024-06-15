@@ -1,0 +1,14 @@
+/__pycache__
+/.vscode
+/.ipynb_checkpoints
+/build
+/dflda_py2
+/dflda3
+/envkkr
+/GuidedLDA
+/OCTIS
+/octis_venv
+/old
+.RData
+.Rhistory
+launch.json
