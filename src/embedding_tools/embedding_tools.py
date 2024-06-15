@@ -3,7 +3,6 @@ import multiprocessing as mp
 import glob
 import importlib
 import utilities as ut
-importlib.reload(ut)
 import pandas as pd
 import os
 import pickle
@@ -86,8 +85,6 @@ def filter(elements, idxs_to_keep):
     return filtered_elements
 
 # For a given text, return the embeddings from OpenAI's text-embedding-3-small model:
-
-
 class Dataset:
     def __init__(self):
         self.cequity_mapper = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/cequity_mapper.csv")
@@ -152,41 +149,6 @@ class Dataset:
             # Save the embeddings to a pickle file
             embeddings_matrix = np.array(embeddings)
             np.save(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}/embeddings{yr}.npy", embeddings_matrix)
-            # with open(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}/embeddings{yr}.pkl", "wb") as f:
-            #     pickle.dump(embeddings, f)
-        # for text, year in zip(self.filtered_texts, self.year):
-        #     embeddings.append(get_text_embeddings(text))
-        #     # Save the embeddings to a pickle file
-        #     with open(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}/embeddings{yr}.pkl", "wb") as f:
-        #         pickle.dump(embeddings, f)
-    
-    # from concurrent.futures import ProcessPoolExecutor
-
-    # def create_embeddings_parallel(self, init_year, end_year):
-    #     def process_text(text):
-    #         return get_text_embeddings(text)
-
-    #     i = 1
-    #     for yr in range(init_year, end_year):
-    #         embeddings = []
-    #         with open(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}/clean_texts{yr}.pkl", "rb") as f:
-    #             texts = pickle.load(f)
-            
-    #         # Use ProcessPoolExecutor to parallelize the embedding generation
-    #         with ProcessPoolExecutor() as executor:
-    #             results = list(executor.map(process_text, texts))
-            
-    #         embeddings.extend(results)
-
-    #         # Report progress
-    #         i += len(texts)
-    #         print(f"Created {i} embeddings so far")
-            
-    #         # Convert the list of embeddings to a NumPy array
-    #         embeddings_matrix = np.array(embeddings)
-            
-    #         # Save the NumPy array to a file
-    #         np.save(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}/embeddings{yr}.npy", embeddings_matrix)
 
     def save_filtered_texts_as_txt(self, yr, filtered_texts, filtered_filenames):
         if not os.path.exists(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A_files_cleaned/{yr}"):
