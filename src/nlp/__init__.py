@@ -1,2 +1,2 @@
 from .nlp import *
-print("Loading utilities")
+from .lemmatizer import *
