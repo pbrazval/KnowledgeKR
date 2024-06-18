@@ -1,2 +1,2 @@
-from .utilities import *
+from .nlp import *
 print("Loading utilities")

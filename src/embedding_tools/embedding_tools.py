@@ -2,7 +2,7 @@ import mpfiles
 import multiprocessing as mp
 import glob
 import importlib
-import utilities as ut
+import nlp as ut
 import pandas as pd
 import os
 import pickle

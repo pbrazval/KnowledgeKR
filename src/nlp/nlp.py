@@ -33,18 +33,6 @@ def gen_corpus(id2word, data_words):
             print('Text entered corpus:', i)
     return (corpus)
 
-def create_crosswalks(filename_list, yr):
-    print(f"Creating cross walks for year {yr}")
-    fn_list = [fn.split('/')[-1] for fn in filename_list]
-    idx_list = list(range(len(filename_list)))
-    fn2idx = pd.DataFrame({"idx": idx_list, "filename": fn_list})
-    fn2cp = []
-    for qtr in [1,2,3,4]:
-        fn2cp.append(pd.read_csv(f'/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/firmdict/{yr}Q{qtr}.csv'))
-    fn2cp = pd.concat(fn2cp)
-    merged_df = pd.merge(fn2idx, fn2cp, on="filename", how="outer")
-    merged_df.to_csv(f'/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/cp2idx/{yr}.csv')
-    return None    
 
 def nwords_cdf(texts):
     len_vec = [len(text) for text in texts]
@@ -186,25 +174,7 @@ def concatenate_topic_maps(myfolder):
 # import importlib
 # importlib.reload(mpfiles)
     
-def filter_corpus(texts, filename_list, cequity_mapper, yr, min10kwords):
-    text_length = [len(text) for text in texts]
-    cik = [int(re.search(r'/(\d+)_', fn).group(1)) for fn in filename_list]
-    if yr <= 2020:
-        cequity_mapper = cequity_mapper[cequity_mapper['year'] == yr]
-    else:
-        cequity_mapper = cequity_mapper[cequity_mapper['year'] == 2020]        
-    order_in_cik = list(range(len(cik)))
-    stats_texts = pd.DataFrame({"order_in_cik": order_in_cik, "cik": cik, "text_length": text_length})
-    fullfilter = pd.merge(stats_texts, cequity_mapper, on="cik", how="inner")
-    fullfilter['crit_LEN'] = fullfilter['text_length'] > min10kwords
-    fullfilter['crit_ALL'] = fullfilter['crit_ALL'] == 1
-    fullfilter['crit_ALL2'] = list(np.logical_and(np.array(fullfilter['crit_ALL']),np.array(fullfilter['crit_LEN'])))
-    selection = fullfilter[fullfilter['crit_ALL2']]
-    selection = selection.drop_duplicates(subset = "cik", keep = "first")
-    idxs_to_keep = selection['order_in_cik']
-    ciks_to_keep = selection['cik']    
-    
-    return selection, idxs_to_keep, ciks_to_keep
+
 
 def print_coherence(lda_model, corpus, num_topics):
     cm = CoherenceModel(model=lda_model, corpus=corpus, coherence='u_mass')

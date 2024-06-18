@@ -16,7 +16,7 @@ print(f"The Pandas version is {pd.__version__}")
 
 # %%
 import csv, gensim, glob, importlib, json, mpfiles, os, pickle, pyLDAvis, re, spacy, string, sys, warnings
-import numpy as np, pandas as pd, gensim.corpora as corpora, utilities as ut
+import numpy as np, pandas as pd, gensim.corpora as corpora, nlp as ut
 from gensim.utils import simple_preprocess
 from gensim.models import CoherenceModel, LdaModel, TfidfModel
 from gensim.test.utils import datapath
