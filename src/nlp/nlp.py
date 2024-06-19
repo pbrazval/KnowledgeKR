@@ -62,25 +62,25 @@ def nwords_cdf(texts):
 def remove_stopwords(texts):
     return [[word for word in simple_preprocess(str(doc)) if word not in stop_words] for doc in texts]
 
-def make_multigrams(lemmatized_texts, min_count, threshold, scoring):
-    print("Generating words using gensim.utils.simple_preprocess...")
-    data_words = gen_words(lemmatized_texts)
-    print("Creating bigram phrases...")
-    bigram_phrases = gensim.models.Phrases(data_words, min_count=min_count, threshold=threshold, scoring = scoring,  connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS) # higher threshold fewer phrases.
-    print("Creating trigram phrases...")
-    trigram_phrases = gensim.models.Phrases(bigram_phrases[data_words], min_count=min_count, threshold=threshold, scoring = scoring, connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS)  
+# def make_multigrams(lemmatized_texts, min_count, threshold, scoring):
+#     print("Generating words using gensim.utils.simple_preprocess...")
+#     data_words = gen_words(lemmatized_texts)
+#     print("Creating bigram phrases...")
+#     bigram_phrases = gensim.models.Phrases(data_words, min_count=min_count, threshold=threshold, scoring = scoring,  connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS) # higher threshold fewer phrases.
+#     print("Creating trigram phrases...")
+#     trigram_phrases = gensim.models.Phrases(bigram_phrases[data_words], min_count=min_count, threshold=threshold, scoring = scoring, connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS)  
 
-    # Faster way to get a sentence clubbed as a trigram/bigram
-    bigram = gensim.models.phrases.Phraser(bigram_phrases)
-    trigram = gensim.models.phrases.Phraser(trigram_phrases)
+#     # Faster way to get a sentence clubbed as a trigram/bigram
+#     bigram = gensim.models.phrases.Phraser(bigram_phrases)
+#     trigram = gensim.models.phrases.Phraser(trigram_phrases)
     
-    print("Making bigrams and trigrams...")
-    data_bigrams = [bigram[doc] for doc in data_words]
-    data_bigrams_trigrams = [trigram[bigram[doc]] for doc in data_bigrams]
+#     print("Making bigrams and trigrams...")
+#     data_bigrams = [bigram[doc] for doc in data_words]
+#     data_bigrams_trigrams = [trigram[bigram[doc]] for doc in data_bigrams]
 
-    print('Bigrams and Trigrams created')
+#     print('Bigrams and Trigrams created')
     
-    return data_bigrams_trigrams
+#     return data_bigrams_trigrams
 
 def make_id2word(data_bigrams_trigrams, pathname, no_below, no_above, keep_n):
     id2word = corpora.Dictionary(data_bigrams_trigrams)
