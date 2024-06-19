@@ -20,6 +20,7 @@ class Dictionary: # dictionary
         self.no_below = no_below
         self.no_above = no_above
         self.keep_n = keep_n
+        self.name = f"dicfullmc{ngr.ng_min_count}thr{str(ngr.ng_threshold).replace('.', '_')}{ngr.ng_scoring[:3]}nob{self.no_below}noa{str(self.no_above).replace('.', '_')}"
         if from_pickle:
             self.load()
         else:

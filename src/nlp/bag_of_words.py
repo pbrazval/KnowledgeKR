@@ -2,6 +2,7 @@ from gensim.models import TfidfModel
 
 class BagOfWords:
     def __init__(self, ngr, dic):
+        self.ngr = ngr
         self.dic = dic
         self.texts = ngr.data_bigrams_trigrams
         self.id2word = dic.id2word

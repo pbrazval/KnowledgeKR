@@ -96,76 +96,39 @@ def bow_texts(texts, id2word):
 
 
 
-def make_topicmap2(lda_model, topics_per_doc, yr, ciks_to_keep, modelname):
-    try:
-        k = lda_model.num_topics
-    except:
-        k = lda_model.m_T
+# def make_topicmap2(lda_model, topics_per_doc, yr, ciks_to_keep, modelname):
+#     try:
+#         k = lda_model.num_topics
+#     except:
+#         k = lda_model.m_T
     
-    cik_list = ciks_to_keep.values
-    topic_probs = {f"topic_{i}": [] for i in range(k)}
-    max_topic = [max(doc, key = lambda x:x[1])[0] for doc in topics_per_doc]
-    # Iterate over each list of tuples in the topic list
-    for doc in topics_per_doc:
-        # Initialize a dictionary to hold the probabilities for this topic
-        topic_dict = {f"topic_{i}": 0.0 for i in range(k)}
-        for tup in doc:
-            topic_dict[f"topic_{tup[0]}"] = tup[1]
-        # Append the topic probabilities to the overall topic_probs dictionary
-        for i in range(k):
-            topic_probs[f"topic_{i}"].append(topic_dict[f"topic_{i}"])
+#     cik_list = ciks_to_keep.values
+#     topic_probs = {f"topic_{i}": [] for i in range(k)}
+#     max_topic = [max(doc, key = lambda x:x[1])[0] for doc in topics_per_doc]
+#     # Iterate over each list of tuples in the topic list
+#     for doc in topics_per_doc:
+#         # Initialize a dictionary to hold the probabilities for this topic
+#         topic_dict = {f"topic_{i}": 0.0 for i in range(k)}
+#         for tup in doc:
+#             topic_dict[f"topic_{tup[0]}"] = tup[1]
+#         # Append the topic probabilities to the overall topic_probs dictionary
+#         for i in range(k):
+#             topic_probs[f"topic_{i}"].append(topic_dict[f"topic_{i}"])
 
-    # Create a Pandas DataFrame using the topic_probs dictionary and the cik_list
-    df = pd.DataFrame.from_dict(topic_probs)
-    df['max_topic'] = max_topic
-    df['CIK'] = cik_list
-    df['year'] = yr
+#     # Create a Pandas DataFrame using the topic_probs dictionary and the cik_list
+#     df = pd.DataFrame.from_dict(topic_probs)
+#     df['max_topic'] = max_topic
+#     df['CIK'] = cik_list
+#     df['year'] = yr
     
-    if not os.path.exists(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}"):
-        os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}")
-    if isinstance(yr, list):
-        df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{min(yr)}_{max(yr)}.csv", index=False)
-    else:
-        df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{yr}.csv", index=False)
-    return df
+#     if not os.path.exists(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}"):
+#         os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}")
+#     if isinstance(yr, list):
+#         df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{min(yr)}_{max(yr)}.csv", index=False)
+#     else:
+#         df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{yr}.csv", index=False)
+#     return df
 
-def make_topicmap_hdp(dicname, yr, ciks_to_keep, corpus, hdp_model, cutoff = 6):
-    modelname = f"{dicname}_hdp"
-    topics_per_doc = [hdp_model[unseen_doc] for unseen_doc in corpus]
-    try:
-        k = hdp_model.num_topics
-    except:
-        k = hdp_model.m_T
-
-    cik_list = ciks_to_keep.values
-    topic_probs = {f"topic_{i}": [] for i in range(k)}
-    max_topic = [max(doc, key = lambda x:x[1])[0] if len(doc) > 0 else None for doc in topics_per_doc]
-    max_topic = [x if x <= cutoff else 999 for x in max_topic]
-
-# Iterate over each list of tuples in the topic list
-    for doc in topics_per_doc:
-    # Initialize a dictionary to hold the probabilities for this topic
-        topic_dict = {f"topic_{i}": 0.0 for i in range(k)}
-        for tup in doc:
-            topic_dict[f"topic_{tup[0]}"] = tup[1]
-    # Append the topic probabilities to the overall topic_probs dictionary
-        for i in range(k):
-            topic_probs[f"topic_{i}"].append(topic_dict[f"topic_{i}"])
-
-# Create a Pandas DataFrame using the topic_probs dictionary and the cik_list
-    df = pd.DataFrame.from_dict(topic_probs)
-    df['max_topic'] = max_topic
-    df['CIK'] = cik_list
-    df['year'] = yr
-
-    if not os.path.exists(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}"):
-        os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}")
-    if isinstance(yr, list):
-        df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{min(yr)}_{max(yr)}.csv", index=False)
-    else:
-        df.to_csv(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_{yr}.csv", index=False)
-    return df
-    
 def concatenate_topic_maps(myfolder):
     topic_map_files = [f for f in os.listdir(myfolder) if f.startswith('topic_map') and f.endswith('.csv')]
     dfs = [pd.read_csv(os.path.join(myfolder, f)) for f in topic_map_files]
@@ -173,14 +136,12 @@ def concatenate_topic_maps(myfolder):
     return concatenated_df    
 # import importlib
 # importlib.reload(mpfiles)
-    
 
-
-def print_coherence(lda_model, corpus, num_topics):
-    cm = CoherenceModel(model=lda_model, corpus=corpus, coherence='u_mass')
-    coherence = cm.get_coherence()
-    print(f"Number of topics: {num_topics}. Coherence: {coherence}")
-    return None
+# def print_coherence(lda_model, corpus, num_topics):
+#     cm = CoherenceModel(model=lda_model, corpus=corpus, coherence='u_mass')
+#     coherence = cm.get_coherence()
+#     print(f"Number of topics: {num_topics}. Coherence: {coherence}")
+#     return None
 
 
 def lemmat_counts():
