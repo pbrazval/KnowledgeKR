@@ -9,23 +9,26 @@ import glob
 import spacy
 import nlp
 import gensim
+import pathlib
+from pathlib import Path
+import os
 
 class NGrammer:
     def __init__(self, 
                  yearrange = range(2006,2023),
-                 cequity_mapper = '/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/cequity_mapper.csv',
-                 source_1a = '/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A files',
+                 cequity_mapper = 'cequity_mapper.csv',
                  ng_min_count = 5,
                  ng_threshold = 100,
                  ng_scoring = 'default',
                  min10kwords = 200, 
                  from_pickle = True,
                  num_processes=mp.cpu_count()):
+        self.datafolder = pathlib.Path(__file__).parent.parent.parent / "data/nlp"
+        self.source_1a = self.datafolder / "1A files"
         self.yearrange = yearrange
         self.min10kwords = min10kwords
-        self.cequity_mapper = cequity_mapper
+        self.cequity_mapper = self.datafolder / cequity_mapper
         self.num_processes = num_processes
-        self.source_1a = source_1a
         self.from_pickle = from_pickle
         self.ng_min_count = ng_min_count
         self.ng_threshold = ng_threshold
@@ -42,11 +45,11 @@ class NGrammer:
         idxs_to_keep = pd.Series()
         ciks_to_keep = pd.Series()
         for yr in self.yearrange:
-            file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+            file_path = self.datafolder / f"lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
             # Load the file using pickle
             with open(file_path, 'rb') as f:
                 lemmatized_texts = lemmatized_texts + pickle.load(f)
-            filter_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lem_filter{yr}.pkl"
+            filter_path = self.datafolder / f"lemmatized_texts/{yr}/lem_filter{yr}.pkl"
             with open(filter_path, 'rb') as f:
                 selection = pickle.load(f)
             idxs_to_keep = idxs_to_keep.append(selection['order_in_cik'])
@@ -56,8 +59,10 @@ class NGrammer:
         return lemmatized_texts, idxs_to_keep, ciks_to_keep, yr_vec
 
     def save_corpus_info(self, yr_vec, idxs_to_keep, ciks_to_keep):
-        os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/corpora/lemmatized_texts/", exist_ok=True)
-        corpus_info = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/corpora/lemmatized_texts/corpus_info.pkl"
+        target_dir = self.datafolder / f"lemmatized_texts/"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        #os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/corpora/lemmatized_texts/", exist_ok=True)
+        corpus_info = target_dir / "corpus_info.pkl"
         with open(corpus_info, "wb") as f:
             pickle.dump((idxs_to_keep, ciks_to_keep, yr_vec), f)
             
@@ -76,11 +81,11 @@ class NGrammer:
         idxs_to_keep = pd.Series()
         ciks_to_keep = pd.Series()
         for yr in self.yearrange:
-            file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+            file_path = self.datafolder / f"lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
             # Load the file using pickle
             with open(file_path, 'rb') as f:
                 lemmatized_texts = lemmatized_texts + pickle.load(f)
-            filter_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lem_filter{yr}.pkl"
+            filter_path = self.datafolder / f"lemmatized_texts/{yr}/lem_filter{yr}.pkl"
             with open(filter_path, 'rb') as f:
                 selection = pickle.load(f)
             idxs_to_keep = idxs_to_keep.append(selection['order_in_cik'])
@@ -103,7 +108,7 @@ class NGrammer:
         pool.close()
         pool.join()
         texts_out = [r.get() for r in results]
-        path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}"
+        path = self.datafolder / f"lemmatized_texts/{yr}"
     # Create the directory if it doesn't exist
         if not os.path.exists(path):
             os.makedirs(path)
@@ -224,13 +229,13 @@ class NGrammer:
             pattern = f'{self.source_1a}/{yr}/Q{qtr}/*.txt'
             filelist.extend(glob.glob(pattern))
         print(f"Creating cross walks for year {yr}")
-        fn_list = [fn.split('/')[-1] for fn in filename_list]
-        idx_list = list(range(len(filename_list)))
+        fn_list = [fn.split('/')[-1] for fn in filelist]
+        idx_list = list(range(len(filelist)))
         fn2idx = pd.DataFrame({"idx": idx_list, "filename": fn_list})
         fn2cp = []
         for qtr in [1,2,3,4]:
-            fn2cp.append(pd.read_csv(f'/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/firmdict/{yr}Q{qtr}.csv'))
+            fn2cp.append(pd.read_csv(self.datafolder / f'firmdict/{yr}Q{qtr}.csv'))
         fn2cp = pd.concat(fn2cp)
         merged_df = pd.merge(fn2idx, fn2cp, on="filename", how="outer")
-        merged_df.to_csv(f'/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/cp2idx/{yr}.csv')
+        merged_df.to_csv(self.datafolder / f"cp2idx/{yr}.csv")
         return None    

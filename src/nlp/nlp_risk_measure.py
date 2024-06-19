@@ -24,7 +24,6 @@ class TopicModel(NLPRiskMeasure):
         self.ciks_to_keep = bow.ngr.ciks_to_keep
         self.redo = redo
 
-
 class LDA(TopicModel):
     def __init__(self, bow, num_topics, modelname = None, redo = False):
         super().__init__(self, bow, redo)
@@ -127,7 +126,7 @@ class HDP(TopicModel):
         hdp_model = gensim.models.HdpModel(corpus=self.corpus,
                                 id2word=self.id2word,
                                 random_state=100) #update_every=1,chunksize=100,passes=10,#alpha="auto"
-        hdp_model.save(f"/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/text/{modelname}_hdp/hdp_model")
+        hdp_model.save(f"/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/text/{self.modelname}_hdp/hdp_model")
         df = self.create_topic_map(self)
         topics_per_doc = [hdp_model.get_document_topics(doc) for doc in self.corpus]
         print(f"Model {self.modelname} created.")
