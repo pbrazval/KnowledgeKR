@@ -218,8 +218,7 @@ class NGrammer:
                     new_text.append(token.lemma_)
             return " ".join(new_text)
     
-    @staticmethod
-    def create_crosswalks(yr):
+    def create_crosswalks(self, yr):
         filelist = []
         for qtr in range(1, 5):
             pattern = f'{self.source_1a}/{yr}/Q{qtr}/*.txt'

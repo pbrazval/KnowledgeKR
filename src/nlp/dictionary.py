@@ -6,24 +6,34 @@ import pandas as pd
 import gensim.corpora as corpora
 
 class Dictionary: # dictionary
-
     def __init__(self, 
-                 dicpath,
-                min_count = 5,
-                thr = 100,
-                scorfun = 'default',
-                no_below = 5,
-                no_above = 0.5,
-                keep_n = 100000,
-                lemmatized_texts = [],
-                from_pickle = True):
-        
+                 ngr, 
+                 dicpath, 
+                 no_below = 40,
+                 no_above = 0.8,
+                 keep_n = None,
+                 from_pickle = True):
+        self.ngr = ngr
         self.from_pickle = from_pickle
-
-        if not from_pickle:
-            data_bigrams_trigrams = nlp.make_multigrams(lemmatized_texts, min_count = min_count, threshold = thr, scoring = scorfun)
-            self.id2word = nlp.make_id2word(data_bigrams_trigrams, dicpath, no_below, no_above, keep_n)            
+        self.id2word = None
+        self.dicpath = dicpath
+        self.no_below = no_below
+        self.no_above = no_above
+        self.keep_n = keep_n
+        if from_pickle:
+            self.load()
         else:
-            self.id2word = corpora.Dictionary.load_from_text(dicpath)
+            self.create()
+            self.save()
+    
+    def load(self):
+        self.id2word = corpora.Dictionary.load_from_text(self.dicpath)
 
-        print(f'I have just created a dictionary with length {len(self.id2word)}.')
+    def create(self):
+        self.id2word = corpora.Dictionary(self.ngr.data_bigrams_trigrams)
+        self.id2word.filter_extremes(no_below=self.no_below, no_above=self.no_above, keep_n=self.keep_n)
+
+    def save(self):
+        self.id2word.save_as_text(self.dicpath)
+
+        
