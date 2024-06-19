@@ -1,2 +1,2 @@
 from .nlp import *
-from .lemmatizer import *
+from .corpus import *

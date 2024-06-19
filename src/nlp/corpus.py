@@ -6,45 +6,76 @@ import pandas as pd
 import numpy as np
 import string
 import glob
+import spacy
+import nlp
+import gensim
 
-class Lemmatizer:
+class NGrammer:
     def __init__(self, 
-                 yearlist = range(2006,2023),
-                 cequity_mapper = '/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/cequity_mapper.csv',
+                 yearrange = range(2006,2023),
+                 cequity_mapper = '/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/cequity_mapper.csv',
                  source_1a = '/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/1A files',
+                 ng_min_count = 5,
+                 ng_threshold = 100,
+                 ng_scoring = 'default',
                  min10kwords = 200, 
-                 load_from_pickle = True,
+                 from_pickle = True,
                  num_processes=mp.cpu_count()):
-        self.yearlist = yearlist
+        self.yearrange = yearrange
         self.min10kwords = min10kwords
         self.cequity_mapper = cequity_mapper
         self.num_processes = num_processes
         self.source_1a = source_1a
-        self.load_from_pickle = load_from_pickle
-        if not self.load_from_pickle:
-            self.lemmatized_texts, self.idxs_to_keep, self.ciks_to_keep = self.create_lemmatized_texts()
-        else:
-            self.lemmatized_texts, self.idxs_to_keep, self.ciks_to_keep, self.yr_vec = self.retrieve_lemmatized_texts()
+        self.from_pickle = from_pickle
+        self.ng_min_count = ng_min_count
+        self.ng_threshold = ng_threshold
+        self.ng_scoring = ng_scoring
+        if not self.from_pickle:
+            self.lemmatize_all()
+        self.lemmatized_texts, self.idxs_to_keep, self.ciks_to_keep, self.yr_vec = self.load_lemmatized_texts()
+        self.data_bigrams_trigrams = nlp.make_multigrams(self.lemmatized_texts, min_count = self.ng_min_count, threshold = self.ng_threshold, scoring = self.ng_scoring)
+        print(f"Length of lemmatized_texts is: {len(self.lemmatized_texts)}")
+
+    def load_lemmatized_texts(self):
+        lemmatized_texts = []
+        yr_vec = []
+        idxs_to_keep = pd.Series()
+        ciks_to_keep = pd.Series()
+        for yr in self.yearrange:
+            file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+            # Load the file using pickle
+            with open(file_path, 'rb') as f:
+                lemmatized_texts = lemmatized_texts + pickle.load(f)
+            filter_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lem_filter{yr}.pkl"
+            with open(filter_path, 'rb') as f:
+                selection = pickle.load(f)
+            idxs_to_keep = idxs_to_keep.append(selection['order_in_cik'])
+            ciks_to_keep = ciks_to_keep.append(selection['cik'])
+            yr_vec = yr_vec + [yr for _ in selection['cik']]
+        self.save_corpus_info(yr_vec, idxs_to_keep, ciks_to_keep)
+        return lemmatized_texts, idxs_to_keep, ciks_to_keep, yr_vec
+
+    def save_corpus_info(self, yr_vec, idxs_to_keep, ciks_to_keep):
+        os.makedirs(f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/corpora/lemmatized_texts/", exist_ok=True)
+        corpus_info = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/corpora/lemmatized_texts/corpus_info.pkl"
+        with open(corpus_info, "wb") as f:
+            pickle.dump((idxs_to_keep, ciks_to_keep, yr_vec), f)
             
-    def create_lemmatized_texts(self):
-        for yr in self.yearlist:
+    def lemmatize_all(self):
+        for yr in self.yearrange:
             print(f"Starting year {yr}")
             texts, filename_list = self.clean_files_mp(yr)
             selection, idxs_to_keep, ciks_to_keep = self.filter_corpus(texts, filename_list, yr)
             lemmatized_texts = self.lemmatization(texts, selection, yr)
-            filelist = []
-            for qtr in range(1, 5):
-                pattern = f'{self.source_1a}/{yr}/Q{qtr}/*.txt'
-                filelist.extend(glob.glob(pattern))
-            self.create_crosswalks(filelist, yr)
-        return lemmatized_texts, idxs_to_keep, ciks_to_keep
+            self.create_crosswalks(yr)
+        return None
     
     def retrieve_lemmatized_texts(self):
         lemmatized_texts = []
         yr_vec = []
         idxs_to_keep = pd.Series()
         ciks_to_keep = pd.Series()
-        for yr in self.yearlist:
+        for yr in self.yearrange:
             file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
             # Load the file using pickle
             with open(file_path, 'rb') as f:
@@ -83,7 +114,8 @@ class Lemmatizer:
         with open(os.path.join(path, f"lem_filter{yr}.pkl"), "wb") as f:
             pickle.dump(selection, f)
         
-        return texts_out
+        return None
+    
     
     @staticmethod
     def clean_file(filename):
@@ -122,7 +154,6 @@ class Lemmatizer:
         return texts, filename_list
 
     def filter_corpus(self, texts, filename_list, yr):
-
         cequity_mapper = pd.read_csv(self.cequity_mapper)
         
         text_length = [len(text) for text in texts]
@@ -147,6 +178,30 @@ class Lemmatizer:
         
         return selection, idxs_to_keep, ciks_to_keep
     
+    def make_multigrams(self):
+        lemmatized_texts = self.lemmatized_texts
+        min_count = self.ng_min_count
+        threshold = self.ng_threshold
+        scoring = self.ng_scoring
+        print("Generating words using gensim.utils.simple_preprocess...")
+        data_words = nlp.gen_words(lemmatized_texts)
+        print("Creating bigram phrases...")
+        bigram_phrases = gensim.models.Phrases(data_words, min_count=min_count, threshold=threshold, scoring = scoring,  connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS) # higher threshold fewer phrases.
+        print("Creating trigram phrases...")
+        trigram_phrases = gensim.models.Phrases(bigram_phrases[data_words], min_count=min_count, threshold=threshold, scoring = scoring, connector_words=gensim.models.phrases.ENGLISH_CONNECTOR_WORDS)  
+
+        # Faster way to get a sentence clubbed as a trigram/bigram
+        bigram = gensim.models.phrases.Phraser(bigram_phrases)
+        trigram = gensim.models.phrases.Phraser(trigram_phrases)
+        
+        print("Making bigrams and trigrams...")
+        data_bigrams = [bigram[doc] for doc in data_words]
+        data_bigrams_trigrams = [trigram[bigram[doc]] for doc in data_bigrams]
+
+        print('Bigrams and Trigrams created')
+        
+        return data_bigrams_trigrams
+
     @staticmethod
     def lemmatize_text(text):
         if text is None:
@@ -164,7 +219,11 @@ class Lemmatizer:
             return " ".join(new_text)
     
     @staticmethod
-    def create_crosswalks(filename_list, yr):
+    def create_crosswalks(yr):
+        filelist = []
+        for qtr in range(1, 5):
+            pattern = f'{self.source_1a}/{yr}/Q{qtr}/*.txt'
+            filelist.extend(glob.glob(pattern))
         print(f"Creating cross walks for year {yr}")
         fn_list = [fn.split('/')[-1] for fn in filename_list]
         idx_list = list(range(len(filename_list)))
