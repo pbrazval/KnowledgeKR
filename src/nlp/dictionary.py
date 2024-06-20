@@ -10,13 +10,14 @@ class Dictionary: # dictionary
                  keep_n = None,
                  from_pickle = True):
         self.ngr = ngr
+        self.datafolder = ngr.datafolder
         self.from_pickle = from_pickle
         self.id2word = None
         self.no_below = no_below
         self.no_above = no_above
         self.keep_n = keep_n
         self.name = f"dicfullmc{ngr.ng_min_count}thr{str(ngr.ng_threshold).replace('.', '_')}{ngr.ng_scoring[:3]}nob{self.no_below}noa{str(self.no_above).replace('.', '_')}"
-        self.path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/id2word/{self.name}.txt"
+        self.path = self.datafolder / f"id2word/{self.name}.txt"
         if from_pickle:
             self.load()
         else:

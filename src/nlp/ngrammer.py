@@ -12,6 +12,8 @@ import gensim
 import pathlib
 from pathlib import Path
 import os
+import sys
+import matplotlib.pyplot as plt
 
 class NGrammer:
     def __init__(self, 
@@ -239,3 +241,40 @@ class NGrammer:
         merged_df = pd.merge(fn2idx, fn2cp, on="filename", how="outer")
         merged_df.to_csv(self.datafolder / f"cp2idx/{yr}.csv")
         return None    
+    
+    def lemmat_counts(self):
+        years = list(self.yearrange)
+        vec = []
+        for yr in self.yearrange:
+            file_path = self.datafolder / f"lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+            with open(file_path, 'rb') as f:
+                lemmatized_texts = pickle.load(f)
+            vec.append(len(lemmatized_texts))
+        df = pd.DataFrame({'Year': years, 'Count': vec})
+        df.to_csv(self.datafolder / "lemmatized_counts.csv")
+        return None
+
+    def count_lemmatized_texts(self):
+        return len(self.lemmatized_texts)
+
+    import matplotlib.pyplot as plt
+
+    def plot_word_distribution(self, yr):
+        file_path = self.datafolder / f"lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+        with open(file_path, 'rb') as f:
+            texts = pickle.load(f)
+
+        len_vec = [len(text) for text in texts]
+        sorted_len_vec = np.sort(len_vec)
+        y = np.arange(1, len(sorted_len_vec) + 1) / len(sorted_len_vec)
+
+        plt.plot(sorted_len_vec, y)
+        plt.xlabel('Number of Words')
+        plt.ylabel('Cumulative Probability')
+        plt.title(f'Cumulative Distribution of Number of Words in each 1A ({yr})')
+        plt.xlim(0,1000)
+        plt.grid(True)
+        plt.show()
+
+        # Save plot
+        plt.savefig(self.datafolder / f"word_distribution_{yr}.png")

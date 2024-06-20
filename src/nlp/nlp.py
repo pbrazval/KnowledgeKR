@@ -88,11 +88,11 @@ def make_id2word(data_bigrams_trigrams, pathname, no_below, no_above, keep_n):
     id2word.save_as_text(pathname)
     return id2word
 
-def bow_texts(texts, id2word):
-    corpus = [id2word.doc2bow(text) for text in texts]
-    tfidf = TfidfModel(corpus, id2word = id2word)
-    print('Corpus and Tfidf created')
-    return corpus, tfidf
+# def bow_texts(texts, id2word):
+#     corpus = [id2word.doc2bow(text) for text in texts]
+#     tfidf = TfidfModel(corpus, id2word = id2word)
+#     print('Corpus and Tfidf created')
+#     return corpus, tfidf
 
 
 
@@ -144,44 +144,44 @@ def concatenate_topic_maps(myfolder):
 #     return None
 
 
-def lemmat_counts():
-    years = list(range(2006, 2023))
-    vec = []
-    for yr in range(2006,2023):
-        file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
-        with open(file_path, 'rb') as f:
-            lemmatized_texts = pickle.load(f)
-        vec.append(len(lemmatized_texts))
-    df = pd.DataFrame({'Year': years, 'Count': vec})
-    # Save the dataframe to CSV
-    df.to_csv('/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/descriptive/lemmat_counts.csv', index=False)
-    return None
+# def lemmat_counts():
+#     years = list(range(2006, 2023))
+#     vec = []
+#     for yr in range(2006,2023):
+#         file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+#         with open(file_path, 'rb') as f:
+#             lemmatized_texts = pickle.load(f)
+#         vec.append(len(lemmatized_texts))
+#     df = pd.DataFrame({'Year': years, 'Count': vec})
+#     # Save the dataframe to CSV
+#     df.to_csv('/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/descriptive/lemmat_counts.csv', index=False)
+#     return None
 
-def count_lemmatized_texts():
-    vec = []
-    for yr in range(2006,2023):
-        file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
-        with open(file_path, 'rb') as f:
-            lemmatized_texts = pickle.load(f)
-            vec.append(len(lemmatized_texts))
-    return vec
+# def count_lemmatized_texts():
+#     vec = []
+#     for yr in range(2006,2023):
+#         file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+#         with open(file_path, 'rb') as f:
+#             lemmatized_texts = pickle.load(f)
+#             vec.append(len(lemmatized_texts))
+#     return vec
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-def plot_word_distribution(yr):
-    file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
-    with open(file_path, 'rb') as f:
-        texts = pickle.load(f)
+# def plot_word_distribution(yr):
+#     file_path = f"/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/lemmatized_texts/{yr}/lemmatized_texts{yr}.pkl"
+#     with open(file_path, 'rb') as f:
+#         texts = pickle.load(f)
 
-    len_vec = [len(text) for text in texts]
-    sorted_len_vec = np.sort(len_vec)
-    y = np.arange(1, len(sorted_len_vec) + 1) / len(sorted_len_vec)
+#     len_vec = [len(text) for text in texts]
+#     sorted_len_vec = np.sort(len_vec)
+#     y = np.arange(1, len(sorted_len_vec) + 1) / len(sorted_len_vec)
 
-    plt.plot(sorted_len_vec, y)
-    plt.xlabel('Number of Words')
-    plt.ylabel('Cumulative Probability')
-    plt.title(f'Cumulative Distribution of Number of Words in each 1A ({yr})')
-    plt.xlim(0,1000)
-    plt.grid(True)
-    plt.show()
+#     plt.plot(sorted_len_vec, y)
+#     plt.xlabel('Number of Words')
+#     plt.ylabel('Cumulative Probability')
+#     plt.title(f'Cumulative Distribution of Number of Words in each 1A ({yr})')
+#     plt.xlim(0,1000)
+#     plt.grid(True)
+#     plt.show()
 
