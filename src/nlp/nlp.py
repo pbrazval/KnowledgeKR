@@ -185,3 +185,26 @@ def concatenate_topic_maps(myfolder):
 #     plt.grid(True)
 #     plt.show()
 
+def filter_corpus(texts, filename_list, cequity_mapper, yr, min10kwords):
+    
+    text_length = [len(text) for text in texts]
+    
+    cik = [int(re.search(r'/(\d+)_', fn).group(1)) for fn in filename_list]
+    
+    if yr <= 2020:
+        cequity_mapper = cequity_mapper[cequity_mapper['year'] == yr]
+    else:
+        cequity_mapper = cequity_mapper[cequity_mapper['year'] == 2020]        
+    
+    order_in_cik = list(range(len(cik)))
+    stats_texts = pd.DataFrame({"order_in_cik": order_in_cik, "cik": cik, "text_length": text_length})
+    fullfilter = pd.merge(stats_texts, cequity_mapper, on="cik", how="inner")
+    fullfilter['crit_LEN'] = fullfilter['text_length'] > min10kwords
+    fullfilter['crit_ALL'] = fullfilter['crit_ALL'] == 1
+    fullfilter['crit_ALL2'] = list(np.logical_and(np.array(fullfilter['crit_ALL']),np.array(fullfilter['crit_LEN'])))
+    selection = fullfilter[fullfilter['crit_ALL2']]
+    selection = selection.drop_duplicates(subset = "cik", keep = "first")
+    idxs_to_keep = selection['order_in_cik']
+    ciks_to_keep = selection['cik']    
+    
+    return selection, idxs_to_keep, ciks_to_keep

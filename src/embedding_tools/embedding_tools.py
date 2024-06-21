@@ -2,7 +2,7 @@ import mpfiles
 import multiprocessing as mp
 import glob
 import importlib
-import nlp as ut
+import nlp
 import pandas as pd
 import os
 import pickle
@@ -10,6 +10,8 @@ import openai
 import tiktoken
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
+from sklearn.decomposition import FactorAnalysis
+from .embeddings import Embeddings
 # Make sure to replace 'your-api-key' with your actual OpenAI API key
 
 key_file_path = os.path.join('..', 'data', 'apikey.txt')
@@ -87,7 +89,7 @@ def filter(elements, idxs_to_keep):
 # For a given text, return the embeddings from OpenAI's text-embedding-3-small model:
 class Dataset:
     def __init__(self):
-        self.cequity_mapper = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/cequity_mapper.csv")
+        self.cequity_mapper = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/nlp/cequity_mapper.csv")
         self.min10kwords = 200
         self.filtered_texts = []
         self.ciks_to_keep = []
@@ -111,7 +113,7 @@ class Dataset:
         for yr in range(2006, 2023):
             print(f"Loading all the dirty 1As from the year {yr}")
             texts, filename_list = create_texts_shortmp(yr)
-            selection, idxs_to_keep, ciks_to_keep = ut.filter_corpus(texts, filename_list, self.cequity_mapper, yr, self.min10kwords)
+            selection, idxs_to_keep, ciks_to_keep = nlp.filter_corpus(texts, filename_list, self.cequity_mapper, yr, self.min10kwords)
             filtered_texts = [texts[i] for i in idxs_to_keep]
             filtered_filenames = [filename_list[i] for i in idxs_to_keep]
             self.save_filtered_texts_as_txt(yr, filtered_texts, filtered_filenames)
