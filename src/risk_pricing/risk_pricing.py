@@ -99,25 +99,25 @@ def create_eret_mo_panel_ff5(stoxmo_orig, cequity_mapper, topic_map, ff5fm, pfn)
                    RF=('RF', 'mean'))
               .reset_index())
     
-    # Calculate kkrhml returns
+    # Calculate HKR returns
     def calc_returns(group):
         weights = group['me']
         return np.nansum(group['eretm'] * weights) / np.sum(weights)
     
-    kkrhml_ret = (stoxmo_with_pfs
+    HKR_ret = (stoxmo_with_pfs
                   .dropna(subset=['topic_kk'])
                   .groupby(['ym', 'ntile_kk'])
                   .apply(calc_returns)
                   .unstack(level='ntile_kk')
                   .rename(columns=lambda x: f'kk{x}')
-                  .assign(kkrhml=lambda x: x['kk4'] - x['kk1'])
-                  .reset_index()[['ym', 'kkrhml']])
+                  .assign(HKR=lambda x: x['kk4'] - x['kk1'])
+                  .reset_index()[['ym', 'HKR']])
     
-    # Assume kkpt_ntile calculation is similar to kkrhml_ret
+    # Assume kkpt_ntile calculation is similar to HKR_ret
     # This section would be adjusted based on actual logic for kkpt_ntile
     
     # Join and finalize eret_mo dataframe
-    eret_mo = pf_ret.merge(kkrhml_ret, on='ym', how='inner')  # Assuming kkpthml_ret joins similarly
+    eret_mo = pf_ret.merge(HKR_ret, on='ym', how='inner')  # Assuming kkpthml_ret joins similarly
     eret_mo = eret_mo.rename(columns={'eret': 'eretm'}).dropna().reset_index(drop=True)
     
     return eret_mo, stoxmo_with_pfs
@@ -150,19 +150,19 @@ def create_eret_we_panel_ff5(stoxwe_orig, cequity_mapper, topic_map, pfn, ff5fw)
         })
     ).reset_index()
 
-    # Calculate kkrhml returns
-    def calc_kkrhml_ret(group):
+    # Calculate HKR returns
+    def calc_HKR_ret(group):
         return (group['eretw'] * group['me']).sum() / group['me'].sum()
 
-    kkrhml_ret = stoxwe_with_pfs.dropna(subset=['topic_kk']).groupby(['yw', 'ntile_kk']).apply(calc_kkrhml_ret).unstack().reset_index()
-    kkrhml_ret['kkrhml'] = kkrhml_ret[4] - kkrhml_ret[1]
-    kkrhml_ret = kkrhml_ret[['yw', 'kkrhml']]
+    HKR_ret = stoxwe_with_pfs.dropna(subset=['topic_kk']).groupby(['yw', 'ntile_kk']).apply(calc_HKR_ret).unstack().reset_index()
+    HKR_ret['HKR'] = HKR_ret[4] - HKR_ret[1]
+    HKR_ret = HKR_ret[['yw', 'HKR']]
 
-    # Assuming similar logic for kkpthml_ret as for kkrhml_ret
+    # Assuming similar logic for kkpthml_ret as for HKR_ret
     # This example doesn't implement the pivot_wider equivalent directly due to pandas' handling differences
 
     # Merge and finalize the eret_we DataFrame
-    eret_we = pf_ret.merge(kkrhml_ret, on='yw', how='inner')
+    eret_we = pf_ret.merge(HKR_ret, on='yw', how='inner')
     eret_we = eret_we.rename(columns={'eret': 'eretw'}).dropna().reset_index(drop=True)
 
     return [eret_we, stoxwe_with_pfs]
@@ -241,7 +241,7 @@ def fama_macbeth(mo_window, pfn):
     results = []
 
     for ym, group in first_stage_rollwin_mo.groupby('ym'):
-        formula = 'eretm ~ kkrhml + HML + SMB + CMA + RMW + Mkt_RF - 1'
+        formula = 'eretm ~ HKR + HML + SMB + CMA + RMW + Mkt_RF - 1'
         model = ols(formula, data=group).fit()
         params = model.params.reset_index()
         params.columns = ['term', 'estimate']
@@ -301,7 +301,7 @@ def rwin_coefs_mo_mult(eret_mo, window_size, pfn):
 def roll_reg_full5ff(z):
     # Assuming z is a DataFrame with the necessary columns
     # Prepare the independent variables (add a constant for the intercept)
-    X = sm.add_constant(z[['Mkt.RF', 'SMB', 'HML', 'CMA', 'RMW', 'kkrhml']])
+    X = sm.add_constant(z[['Mkt.RF', 'SMB', 'HML', 'CMA', 'RMW', 'HKR']])
     # The dependent variable
     y = z['eret']
     
@@ -353,15 +353,15 @@ def first_stage(formula, eretdf, pfn):
 
 def run_regression_models(first_stage2):
     # OLS Regression
-    formula_ols = 'eretw ~ kkrhml + HML + SMB + CMA + RMW + Mkt_RF'
+    formula_ols = 'eretw ~ HKR + HML + SMB + CMA + RMW + Mkt_RF'
     model_ols = smf.ols(formula=formula_ols, data=first_stage2).fit()
     
-    # WLS Regression without kkrhml
+    # WLS Regression without HKR
     formula_wls_nokk = 'eretw ~ HML + SMB + CMA + RMW + Mkt_RF'
     model_wls_nokk = smf.wls(formula=formula_wls_nokk, data=first_stage2, weights=1 / first_stage2['sigmae']).fit()
     
-    # WLS Regression with kkrhml
-    formula_wls = 'eretw ~ kkrhml + HML + SMB + CMA + RMW + Mkt_RF'
+    # WLS Regression with HKR
+    formula_wls = 'eretw ~ HKR + HML + SMB + CMA + RMW + Mkt_RF'
     model_wls = smf.wls(formula=formula_wls, data=first_stage2, weights=1 / first_stage2['sigmae']).fit()
     
     return model_ols, model_wls_nokk, model_wls
@@ -488,20 +488,20 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
             }))
             .reset_index())
     
-    # # Calculate KKRHML returns
+    # # Calculate HKR returns
     max_kknt = max(stoxwe_add['ntile_kk'])
-    kkrhml_ret = (stoxwe_add.dropna(subset=['topic_kk'])
+    HKR_ret = (stoxwe_add.dropna(subset=['topic_kk'])
                 .groupby(['yw', 'ntile_kk'])
                 .apply(lambda df: pd.Series({
                     'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
                 .reset_index()
                 .pivot_table(index='yw', columns='ntile_kk', values='eret', aggfunc='mean')
                 .rename(columns=lambda x: f'kk{x}')
-                .assign(kkrhml=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
-                [['kkrhml']]
+                .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+                [['HKR']]
                 .reset_index())
     
-    eret_we = (pf_ret.merge(kkrhml_ret, on='yw', how='inner')
+    eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
             # Uncomment the line below if kkpthml_ret needs to be joined
             # .merge(kkpthml_ret, on='yw', how='inner')
             .rename(columns={'eret': 'eretw'})
@@ -513,10 +513,10 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
 def  famaMacBeth(eret_we, pfname, window_size = 52):
     if "CMA" in eret_we.columns:
         case = "ff5"
-        formula = "eretw ~ MktRF + SMB + HML + CMA + RMW + kkrhml"
+        formula = "eretw ~ MktRF + SMB + HML + CMA + RMW + HKR"
     else:
         case = "ff3"
-        formula = "eretw ~ MktRF + SMB + HML + kkrhml"
+        formula = "eretw ~ MktRF + SMB + HML + HKR"
     
     eret_we2 = add_constant(eret_we, prepend=False)
     eret_we2.set_index('yw', inplace=True)
@@ -536,15 +536,15 @@ def  famaMacBeth(eret_we, pfname, window_size = 52):
         # Extract coefficients for each window and create a DataFrame
         for idx, params in rres.params.iterrows():
             if case == "ff3":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['kkrhml']])
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
             else:
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['kkrhml'], params['CMA'], params['RMW']])
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
 
     # Convert the list of results into a DataFrame
     if case == "ff3":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'kkrhml'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR'])
     else:
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'kkrhml', 'CMA', 'RMW'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
         
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
 
@@ -565,7 +565,7 @@ def ret_nwks_ahead(eret_we_agg, n):
             .shift(-n))
     return eret_we_agg
 
-def kkrhml_vs_mktrf(eret_we):
+def HKR_vs_mktrf(eret_we):
 
     eret_we_agg = (eret_we
                 .groupby('yw')
@@ -586,15 +586,15 @@ def kkrhml_vs_mktrf(eret_we):
                                 'Mkt.RF_156w': 'MktRF_156w'#, 'Mkt.RF_208w': 'MktRF_208w', 'Mkt.RF_260w': 'MktRF_260w', 
                                 }, inplace=True)
 
-    summary = (summary_col([sm.formula.ols(formula="MktRF_4w ~ kkrhml", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_12w ~ kkrhml", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_52w ~ kkrhml", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_104w ~ kkrhml", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_156w ~ kkrhml", data=eret_we_agg).fit()#, sm.formula.ols(formula="MktRF_208w ~ kkrhml", data=eret_we_agg).fit(), sm.formula.ols(formula="MktRF_260w ~ kkrhml", data=eret_we_agg)
+    summary = (summary_col([sm.formula.ols(formula="MktRF_4w ~ HKR", data=eret_we_agg).fit(), 
+                            sm.formula.ols(formula="MktRF_12w ~ HKR", data=eret_we_agg).fit(), 
+                            sm.formula.ols(formula="MktRF_52w ~ HKR", data=eret_we_agg).fit(), 
+                            sm.formula.ols(formula="MktRF_104w ~ HKR", data=eret_we_agg).fit(), 
+                            sm.formula.ols(formula="MktRF_156w ~ HKR", data=eret_we_agg).fit()#, sm.formula.ols(formula="MktRF_208w ~ HKR", data=eret_we_agg).fit(), sm.formula.ols(formula="MktRF_260w ~ HKR", data=eret_we_agg)
                             ],  # List of regression result objects
                         model_names=['4wa', '12wa', '52wa', '104wa', '156wa'],#, '208wa', '260wa'],  # Names for each model
                         stars=True,  # Include significance stars
                         float_format='%0.4f',  # Format for displaying coefficients
-                        regressor_order=['kkrhml'],  # Order of variables in the table
+                        regressor_order=['HKR'],  # Order of variables in the table
                         drop_omitted=False))  # Drop omitted variables
     return summary

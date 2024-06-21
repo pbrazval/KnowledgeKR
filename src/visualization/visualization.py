@@ -124,12 +124,12 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
 
 def explore_eret_we(eret_we, figfolder):
     fig_h1b_vs_smb_kkhml(eret_we, figfolder)
-    tex_kkrhml_vs_mktrf(eret_we, figfolder)
+    tex_HKR_vs_mktrf(eret_we, figfolder)
     return None
 
 @announce_execution
-def tex_kkrhml_vs_mktrf(eret_we, figfolder):
-    summary = rp.kkrhml_vs_mktrf(eret_we)
+def tex_HKR_vs_mktrf(eret_we, figfolder):
+    summary = rp.HKR_vs_mktrf(eret_we)
     # Define the file path for the tex file
     tex_content = summary.as_latex()
     
@@ -137,7 +137,7 @@ def tex_kkrhml_vs_mktrf(eret_we, figfolder):
     tex_content = tex_content.split("\\bigskip")[0]
     
     # Define the file path for the tex file
-    tex_file_path = figfolder + "kkrhml_vs_mktrf.tex"
+    tex_file_path = figfolder + "HKR_vs_mktrf.tex"
     
     # Write the modified summary to the tex file
     with open(tex_file_path, 'w') as tex_file:
@@ -149,7 +149,7 @@ def fig_h1b_vs_smb_kkhml(eret_we, figfolder):
     factors = (eret_we
               .groupby('yw')
               .mean()
-              .loc[:, ['SMB', 'kkrhml']]
+              .loc[:, ['SMB', 'HKR']]
              )
     factors = factors + 1
     factors = factors.cumprod()
@@ -164,7 +164,7 @@ def fig_h1b_vs_smb_kkhml(eret_we, figfolder):
     plt.axvline(2020 + 26/53, color='b', linestyle='--')
     plt.xlabel("Year")
     plt.ylabel("Cumulative return (Normalize to 100 at June 2020)")
-    plt.title("Cumulative return of SMB and kkrhml factors")
+    plt.title("Cumulative return of SMB and HKR factors")
     plt.savefig(figfolder + "h1b_vs_smb_kkhml.jpg", dpi=600)
     plt.close()
 
@@ -188,7 +188,7 @@ def tex_summary(fmb_3, fmb_5, figfolder):
     stargazer = Stargazer([fmb_3, fmb_5])
     stargazer.significant_digits(5)
     stargazer.title('Fama-MacBeth Regressions')
-    stargazer.covariate_order(['MktRF', 'SMB', 'HML', 'kkrhml', 'RMW', 'CMA'])
+    stargazer.covariate_order(['MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'])
     stargazer.show_degrees_of_freedom(False)
     stargazer.show_f_statistic = False
     stargazer.show_residual_std_err = False
