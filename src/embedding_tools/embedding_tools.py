@@ -11,7 +11,6 @@ import tiktoken
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from sklearn.decomposition import FactorAnalysis
-from .embeddings import Embeddings
 # Make sure to replace 'your-api-key' with your actual OpenAI API key
 
 key_file_path = os.path.join('..', 'data', 'apikey.txt')
