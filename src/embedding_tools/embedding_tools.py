@@ -11,6 +11,8 @@ import tiktoken
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from sklearn.decomposition import FactorAnalysis
+from .embeddings_hkr_model import EmbeddingsHKRModel
+from .embeddings import Embeddings
 # Make sure to replace 'your-api-key' with your actual OpenAI API key
 
 key_file_path = os.path.join('..', 'data', 'apikey.txt')
@@ -62,6 +64,8 @@ def create_texts_shortmp(yr):
     return texts, filename_list
 
 
+
+
 def filter(elements, idxs_to_keep):
     #print(f"Starting to filter texts")
     #results = []
@@ -84,6 +88,55 @@ def filter(elements, idxs_to_keep):
     # with open(os.path.join(path, f"lem_filter{yr}.pkl"), "wb") as f:
     #     pickle.dump(selection, f)
     return filtered_elements
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def plot_spearman_correlation(embeddings, terms):
+    """
+    Plots the Spearman rank correlation heatmap for given topic vectors from models.
+
+    Parameters:
+    models (dict): A dictionary where keys are model names and values are model objects.
+    terms (list): A list of term strings to retrieve topic vectors from each model.
+
+    Example usage:
+    models = {
+        'knocap': knocap,
+        'intcap': intcap,
+        'ip': ip,
+        'humcap': humcap,
+        'patents': patents
+    }
+    terms = ['topic_kk']
+    plot_spearman_correlation(models, terms)
+    """
+    data_dict = {}
+    # Retrieve topic vectors and store them in a dictionary
+    for term in terms:
+        model = EmbeddingsHKRModel().from_topic_similarity(embeddings, term = term, modelname="none")
+        # Convert term to varname
+        data_dict[term.replace(' ', '_')] = model.topic_map["topic_kk"].to_numpy()
+    
+    # Create a DataFrame
+    data = pd.DataFrame(data_dict)
+    
+    # Calculate Spearman rank correlation matrix
+    correlation_matrix = data.corr(method='spearman')
+    
+    # Create a mask for the upper triangle
+    mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
+    
+    # Plot the heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(correlation_matrix, annot=True, mask=mask, cmap='coolwarm', fmt='.2f')
+    plt.title('Pair-wise Spearman Rank Correlation')
+    plt.show()
+
+
+
 
 # For a given text, return the embeddings from OpenAI's text-embedding-3-small model:
 class Dataset:
