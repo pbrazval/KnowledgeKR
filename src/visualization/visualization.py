@@ -177,8 +177,8 @@ def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # amazon_graph(stoxda, figfolder)
     plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "Y")
     plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "Y")
-    plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "M")
-    plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "M")
+    #plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "M")
+    #plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "M")
     return None
 
 from stargazer.stargazer import Stargazer
@@ -483,6 +483,7 @@ def tex_compare_kk_measures(comparison_measures, figfolder):
         latex_file.write(latex_content)
     return None
 
+@announce_execution
 def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk"):
     if moment_name == 'kurtosis':
         statfunc = pd.Series.kurt
@@ -505,6 +506,17 @@ def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequ
                     .reset_index())
     moment_df= moment_df.reset_index()
     large_palette = sns.color_palette('husl', 8)
+    # Find the two lowest and two highest values of ntile_kk:
+    ntile_kk_values = stox_by_kk[hue_var].unique()
+    sorted_values = sorted(ntile_kk_values)
+
+    lowest_two = sorted_values[:2]
+    highest_two = sorted_values[-2:]
+    keep = lowest_two + highest_two
+
+    # Filter stox_by_kk to only include ntile_kk values equal to the two lowest and two highest values of ntile_kk
+    if hue_var == 'ntile_kk':
+        stox_by_kk = stox_by_kk[stox_by_kk[hue_var].isin(keep)]
     if hue_var == 'max_topic':
         # Filter only rows where max_topic is between 0 and 7 (inclusive):
         stox_by_kk = stox_by_kk[stox_by_kk[hue_var].between(0, 7)]

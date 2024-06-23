@@ -51,12 +51,12 @@ def clean_linkt_orig(linkt_orig, start_time):
 
     return linkt
 
-def load_dataframes(modelname, figfolder, start_time, clean_again=False):
+def load_dataframes(modelname,start_time, clean_again=False):
     if clean_again:
         
         patent_ik_orig = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/KPSS_2020_public.csv")
         amazon_nov01_short = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/amazon_nov01_short.csv")
-        cequity_mapper = pd.read_csv("~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/cequity_mapper.csv")
+        cequity_mapper = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/nlp/cequity_mapper.csv")
         ff3fw_orig = pd.read_csv("~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/ff3fw.csv")
         ff5fw_orig = pd.read_csv("~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/ff5fw.csv")
         ff3fm_orig = pd.read_csv("~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/FF3F.csv")
@@ -106,13 +106,16 @@ def load_dataframes(modelname, figfolder, start_time, clean_again=False):
 
         
         variable_names = ['amazon_nov01_short', 'ff3fw', 'ff5fw',
-            'ff3fm', 'ff5fm', 'topic_map_unlabeled', 'stoxmo_orig', 'comparison_measures', 'cequity_mapper'
+            'ff3fm', 'ff5fm', 'stoxmo_orig', 'comparison_measures', 'cequity_mapper', 'stoxda_orig', 'stoxwe_orig'
         ]
 
         for var_name in variable_names:
             # Get the actual variable object using globals() and save it as a pickle
             # Replace 'globals()' with 'locals()' if these are local variables
             locals()[var_name].to_pickle(f"../data/{var_name}.pkl")
+        # Create folder for modelname if it does not exist:
+        os.makedirs(f"../data/models/{modelname}", exist_ok=True)
+        topic_map_unlabeled.to_pickle(f"../data/models/{modelname}/topic_map_unlabeled.pkl")
 
         
     else:
@@ -127,7 +130,7 @@ def load_dataframes(modelname, figfolder, start_time, clean_again=False):
         ff5fm = pd.read_pickle(f"../data/ff5fm.pkl")
         #linkt = pd.read_pickle(f"../data/linkt.pkl")
         # Load dataframes from pkl:
-        topic_map_unlabeled = pd.read_pickle(f"../data/topic_map_unlabeled.pkl")
+        topic_map_unlabeled = pd.read_pickle(f"../data/models/{modelname}/topic_map_unlabeled.pkl")
         #topic_map_unlabeled = create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, compustat_pt)
         #print("Tempo de execução:", time.time() - start_time)
         stoxda_orig = pd.read_pickle(f"../data/stoxda_orig.pkl")
