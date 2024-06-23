@@ -40,17 +40,13 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
         return label_topic_map_hdp(topic_map_labeled, name, **kwargs)
 
     topic_map_labeled = topic_map_unlabeled.copy()
-
-    topic_map_labeled.rename(columns = topic_dict[name], inplace=True)  
-    if name == "embeddings_km10_ipcs":
-        topic_map_labeled['ntile_kk'] = (topic_map_labeled.
-            groupby('year')['topic_kk'].
-            transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
-    else:
-        cuts = [0, 0.75, 1]
-        topic_map_labeled['ntile_kk'] = (topic_map_labeled.
-            groupby('year')['topic_kk'].
-            transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
+    if name in topic_dict.keys():
+        topic_map_labeled.rename(columns = topic_dict[name], inplace=True)  
+    # If name starts with "emb":
+    
+    topic_map_labeled['ntile_kk'] = (topic_map_labeled.
+        groupby('year')['topic_kk'].
+        transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
     
     return topic_map_labeled
 
@@ -169,8 +165,8 @@ def fig_h1b_vs_smb_kkhml(eret_we, figfolder):
     plt.close()
 
 @announce_execution
-def explore_fmb(fmb_3, fmb_5, figfolder):
-    tex_summary(fmb_3, fmb_5, figfolder)
+def explore_fmb(fmb_list, figfolder):
+    tex_summary(fmb_list, figfolder)
 
 def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # Plot the Amazon stock prices
@@ -184,8 +180,8 @@ def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
 from stargazer.stargazer import Stargazer
 
 @announce_execution
-def tex_summary(fmb_3, fmb_5, figfolder):
-    stargazer = Stargazer([fmb_3, fmb_5])
+def tex_summary(fmb_list, figfolder):
+    stargazer = Stargazer(fmb_list)
     stargazer.significant_digits(5)
     stargazer.title('Fama-MacBeth Regressions')
     stargazer.covariate_order(['MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'])
@@ -194,7 +190,9 @@ def tex_summary(fmb_3, fmb_5, figfolder):
     stargazer.show_residual_std_err = False
     # stargazer.show_footer = False
     stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
-    stargazer.custom_columns(['FF3', 'FF5'])
+    # Create a vector with "model_1", "model_2", with the length of fmb_list:
+    model_vector = [f"model_{i+1}" for i in range(len(fmb_list))]
+    stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
     with open(os.path.join(figfolder, "fmb_results.tex"), "w") as text_file:

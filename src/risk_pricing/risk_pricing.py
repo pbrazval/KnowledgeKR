@@ -8,11 +8,11 @@ import random
 import pandas as pd
 import visualization as viz
 import data_loading as dl
-import risk_pricing as rp
 from linearmodels.panel.model import FamaMacBeth
 from linearmodels.panel import generate_panel_data
 from statsmodels.regression.rolling import RollingOLS
 from statsmodels.iolib.summary2 import summary_col
+import risk_pricing as rp
 
 def get_fiscal_year_mo(ym):
     year = ym // 100  # Extract the year part
@@ -70,8 +70,8 @@ def attribute_portfolios_mo(stoxmo):
             ))
             .assign(pfkk3me3mb=lambda x: 100*x['ntile_kk'] + 10*x['me_3tile'] + x['mb_3tile'])
             .groupby(['me_3tile', 'mb_3tile'], group_keys=False)
-            .apply(lambda x: x.assign(kkr_3tile_inner=pd.qcut(x['topic_kk'], [0, 0.8, 0.9, 0.95,  1], duplicates = 'drop', labels=False) + 1))
-            .assign(pfkki3me3mb=lambda x: 100*x['kkr_3tile_inner'] + 10*x['me_3tile'] + x['mb_3tile'])
+            .apply(lambda x: x.assign(kkr_ntile_inner=pd.qcut(x['topic_kk'], [0, 0.8, 0.9, 0.95,  1], duplicates = 'drop', labels=False) + 1))
+            .assign(pfkki3me3mb=lambda x: 100*x['kkr_ntile_inner'] + 10*x['me_3tile'] + x['mb_3tile'])
             .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
             .loc[:, ['fiscalyear', 'gvkey', 'pf2me3mb', 'pf5me5mb', 'pfkk3me3mb', 'pfkki3me3mb']]
             )
@@ -371,7 +371,7 @@ def run_regression_models(first_stage2):
 # 'eretdf' is a pandas DataFrame containing the data, and 'pfn' is the name of the column
 # by which to group the data before fitting the model.
 
-def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, add_innerkk_pf):
+def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, add_innerkk_pf, kki_cuts):
     # Apply the conditions and choices to create the mb_group column
     if "CMA" in ff3fw.columns:
         case = "ff5"
@@ -420,7 +420,6 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
 
     # Apply the conditions and choices to create the mb_group column
     pfs['mb_group'] = np.select(conditions, choices, default=np.nan)
-    print("Agora com mudança no kki")
     if add_innerkk_pf:
         pfs = (pfs #.drop(columns=['med_NYSE_me', 'med_NYSE_mb30p', 'med_NYSE_mb70p'])  # Drop the columns used to create 'me_group' and 'mb_group'
                 .assign(pf2me3mb=lambda x: 10 * x['me_group'] + x['mb_group'])
@@ -434,9 +433,9 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .assign(pfkk3me3mb = lambda x: 100 * x['ntile_kk'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
                 .groupby(['y', 'me_3tile', 'mb_3tile'])
-                .apply(lambda df: df.assign(kkr_3tile_inner=pd.qcut(df['topic_kk'], [0, 0.2, 0.4, 0.6, 0.8, 1], labels=False, duplicates='raise')))
+                .apply(lambda df: df.assign(kkr_ntile_inner=pd.qcut(df['topic_kk'], kki_cuts, labels=False, duplicates='raise')))
                 .reset_index(drop=True)
-                .assign(pfkki3me3mb=lambda x: 100 * x['kkr_3tile_inner'] + 10 * x['me_3tile'] + x['mb_3tile'])
+                .assign(pfkki3me3mb=lambda x: 100 * x['kkr_ntile_inner'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
                 .loc[:, ['gvkey_x', 'pfkk3me3mb', 'pf2me3mb', 'pf5me5mb', 'pfkk2me3mb', 'pfkki3me3mb', 'fiscalyear']]
                 .rename(columns={'gvkey_x': 'gvkey'})
@@ -510,13 +509,19 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
     
     return eret_we, stoxwe_add
 
-def  famaMacBeth(eret_we, pfname, window_size = 52):
-    if "CMA" in eret_we.columns:
-        case = "ff5"
-        formula = "eretw ~ MktRF + SMB + HML + CMA + RMW + HKR"
+def  famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
+    
+    if formula is None:
+        if "CMA" in eret_we.columns:
+            case = "ff5"
+            formula = "eretw ~ MktRF + SMB + HML + CMA + RMW + HKR"
+        else:
+            case = "ff3"
+            formula = "eretw ~ MktRF + SMB + HML + HKR"
+    elif formula == "eretw ~ MktRF + HKR":
+        case = "ff1"
     else:
-        case = "ff3"
-        formula = "eretw ~ MktRF + SMB + HML + HKR"
+        raise ValueError("Invalid formula. Please provide a valid formula for the regression.")
     
     eret_we2 = add_constant(eret_we, prepend=False)
     eret_we2.set_index('yw', inplace=True)
@@ -537,14 +542,18 @@ def  famaMacBeth(eret_we, pfname, window_size = 52):
         for idx, params in rres.params.iterrows():
             if case == "ff3":
                 results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
-            else:
+            elif case == "ff5":
                 results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
+            elif case == "ff1":
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['HKR']])
 
     # Convert the list of results into a DataFrame
     if case == "ff3":
         results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR'])
-    else:
+    elif case == "ff5":
         results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
+    elif case == "ff1":
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'HKR'])
         
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
 
@@ -552,9 +561,9 @@ def  famaMacBeth(eret_we, pfname, window_size = 52):
     fmb = FamaMacBeth.from_formula(formula, indexed_df).fit(cov_type="kernel")
     return fmb, indexed_df
 
-def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, window_size = 52, add_innerkk_pf = False):
-    eret_we, stoxwe_add = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf)
-    fmb, indexed_df = rp.famaMacBeth(eret_we, pfname, window_size=window_size)
+def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
+    eret_we, stoxwe_add = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts)
+    fmb, indexed_df = rp.famaMacBeth(eret_we, pfname, formula = formula, window_size=window_size)
     return fmb, indexed_df, eret_we, stoxwe_add
 
 

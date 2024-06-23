@@ -72,13 +72,12 @@ def load_dataframes(modelname,start_time, clean_again=False):
         stoxwe_orig = stoxwe_post2005short_dict["stoxwe_post2005short"]
 
         stoxda_post2005veryshort_dict = pyreadr.read_r("/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/stoxda_post2005veryshort.Rdata")
-        stoxda_post2005veryshort = stoxda_post2005veryshort_dict["stoxwe_post2005short"]
+        stoxda_orig = stoxda_post2005veryshort_dict["stoxwe_post2005short"]
 
         stoxmo_post2000short_dict = pyreadr.read_r("/Users/pedrovallocci/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/input/stoxmo_post2000short.Rdata")
         stoxmo_post2000short = stoxmo_post2000short_dict["stoxmo_post2000short"]
 
         comparison_measures = pd.read_csv("~/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/comparison_measures.csv")
-        stoxda_orig = stoxda_post2005veryshort
         stoxmo_orig = stoxmo_post2000short ## Defining source of stocks information
         
         # I commented the line below because the number of rows diverged from the R version when redoing in Python:
