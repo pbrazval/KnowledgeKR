@@ -437,7 +437,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .reset_index(drop=True)
                 .assign(pfkki3me3mb=lambda x: 100 * x['kkr_ntile_inner'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
-                .loc[:, ['gvkey_x', 'pfkk3me3mb', 'pf2me3mb', 'pf5me5mb', 'pfkk2me3mb', 'pfkki3me3mb', 'fiscalyear']]
+                .loc[:, ['gvkey_x', 'pfkk3me3mb', 'pf2me3mb', 'pf5me5mb', 'pfkk2me3mb', 'pfkki3me3mb', 'fiscalyear', 'me_group']]
                 .rename(columns={'gvkey_x': 'gvkey'})
                 .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
         )
@@ -488,7 +488,9 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
             .reset_index())
     
     # # Calculate HKR returns
+    
     max_kknt = max(stoxwe_add['ntile_kk'])
+    
     HKR_ret = (stoxwe_add.dropna(subset=['topic_kk'])
                 .groupby(['yw', 'ntile_kk'])
                 .apply(lambda df: pd.Series({
@@ -500,9 +502,26 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 [['HKR']]
                 .reset_index())
     
+    HKR_SB_ret = (stoxwe_add
+            .loc[:, ['yw', 'ntile_kk', 'me_group', 'topic_kk', 'eretw', 'me']]
+            .dropna(subset=['topic_kk'])
+            .groupby(['yw', 'ntile_kk', 'me_group'])
+            .apply(lambda df: pd.Series({
+                'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
+            .reset_index()
+            .groupby(['yw', 'ntile_kk'])
+            .agg(eret_mean=('eret', 'mean'))
+            .reset_index()
+            .pivot_table(index='yw', columns='ntile_kk', values='eret_mean', aggfunc='mean')
+            .rename(columns=lambda x: f'kk{x}')
+            .assign(HKR_SB=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+            .reset_index()
+            .loc[:, ['yw', 'HKR_SB']])
+    
+    HKR_SB_ret.columns.name = None
+    
     eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
-            # Uncomment the line below if kkpthml_ret needs to be joined
-            # .merge(kkpthml_ret, on='yw', how='inner')
+               .merge(HKR_SB_ret, on='yw', how='inner')
             .rename(columns={'eret': 'eretw'})
             .dropna()
             .reset_index(drop=True))
@@ -574,12 +593,8 @@ def ret_nwks_ahead(eret_we_agg, n):
             .shift(-n))
     return eret_we_agg
 
-def HKR_vs_mktrf(eret_we):
+def HKR_vs_mktrf(eret_we_agg):
 
-    eret_we_agg = (eret_we
-                .groupby('yw')
-                .mean())
-        
     eret_we_agg = ret_nwks_ahead(eret_we_agg, 4)
     eret_we_agg = ret_nwks_ahead(eret_we_agg, 12)
     eret_we_agg = ret_nwks_ahead(eret_we_agg, 52)

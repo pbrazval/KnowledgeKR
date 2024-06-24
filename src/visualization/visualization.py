@@ -119,13 +119,17 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     return None
 
 def explore_eret_we(eret_we, figfolder):
-    fig_h1b_vs_smb_kkhml(eret_we, figfolder)
-    tex_HKR_vs_mktrf(eret_we, figfolder)
+    eret_we_agg = (eret_we
+            .groupby('yw')
+            .mean())
+    fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
+    tex_HKR_vs_mktrf(eret_we_agg, figfolder)
+    tex_summary_statistics(eret_we_agg, figfolder)
     return None
 
 @announce_execution
-def tex_HKR_vs_mktrf(eret_we, figfolder):
-    summary = rp.HKR_vs_mktrf(eret_we)
+def tex_HKR_vs_mktrf(eret_we_agg, figfolder):
+    summary = rp.HKR_vs_mktrf(eret_we_agg)
     # Define the file path for the tex file
     tex_content = summary.as_latex()
     
@@ -140,11 +144,9 @@ def tex_HKR_vs_mktrf(eret_we, figfolder):
         tex_file.write(tex_content)
 
 @announce_execution
-def fig_h1b_vs_smb_kkhml(eret_we, figfolder):
+def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     plt.figure()
-    factors = (eret_we
-              .groupby('yw')
-              .mean()
+    factors = (eret_we_agg
               .loc[:, ['SMB', 'HKR']]
              )
     factors = factors + 1
@@ -163,6 +165,40 @@ def fig_h1b_vs_smb_kkhml(eret_we, figfolder):
     plt.title("Cumulative return of SMB and HKR factors")
     plt.savefig(figfolder + "h1b_vs_smb_kkhml.jpg", dpi=600)
     plt.close()
+
+@announce_execution
+def tex_summary_statistics(eret_we_agg, figfolder):
+    # Pick columns only in set {'MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'}:
+    desired_columns = {'Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA', 'HKR_SB'}
+
+    eret_we_agg = eret_we_agg.loc[:, [col for col in eret_we_agg.columns if col in desired_columns]]
+        # Convert values from weekly to monthly:
+    summary = eret_we_agg.describe()
+    # Transpose the dataframe:
+    summary = summary.T
+    # Multiply the values by 4.35 of all the columns except count:
+    summary.loc[:, summary.columns != 'count'] = summary.loc[:, summary.columns != 'count'] * 4.35
+    summary['Sharpe'] = summary['mean'] / summary['std']
+
+    summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']] =\
+        summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']].applymap(to_percentage)
+
+    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25%', '50%', '75%', 'max']]
+    summary['Sharpe'] = summary['Sharpe'].round(3)
+    print("Now with Sharpe ratio")
+    
+    save_table_dual(figfolder, summary, "summary_statistics")
+
+def to_percentage(x):
+    return f"{x * 100:.2f}%"
+
+def save_table_dual(figfolder, table, filename):
+    with open(figfolder + filename + ".tex", 'w') as tex_file:
+        tex_file.write(table.to_latex(index = False, header = True))
+
+    # Print as HTML as well:
+    with open(figfolder + filename + ".html", 'w') as html_file:
+        html_file.write(table.to_html())
 
 @announce_execution
 def explore_fmb(fmb_list, figfolder):
@@ -198,14 +234,10 @@ def tex_summary(fmb_list, figfolder):
     with open(os.path.join(figfolder, "fmb_results.tex"), "w") as text_file:
         text_file.write(result)
 
-    #summary = fmb.summary
-    
-    # # Define the file path for the tex file
-    # tex_file_path = figfolder + "fmb_summary.tex"
-    
-    # # Write the summary to the tex file
-    # with open(tex_file_path, 'w') as tex_file:
-    #     tex_file.write(summary.as_latex())
+    result = stargazer.render_html()
+    file_path = os.path.join(figfolder, "fmb_results.html")
+    with open(file_path, "w") as text_file:
+        text_file.write(result)
 
 @announce_execution
 def fig_histogram_kk_by_ind12(topic_map, figfolder):
@@ -454,10 +486,11 @@ def filecounter(textfolder):
     # Generate LaTeX table (manually or using a library like pylatex)
     # For simplicity, we're saving the DataFrame to a CSV file
     # You can manually convert this CSV to a LaTeX table or use Python libraries if needed
-    output_filepath = os.path.join(textfolder, "file_counts.tex")
+    #output_filepath = os.path.join(textfolder, "file_counts.tex")
 
     # Save to a .tex file
-    lemmat_counts.to_latex(output_filepath, index=False)
+    #lemmat_counts.to_latex(output_filepath, index=False)
+    save_table_dual(textfolder, lemmat_counts, "file_counts")
 
 @announce_execution
 def tex_compare_kk_measures(comparison_measures, figfolder):
@@ -469,17 +502,19 @@ def tex_compare_kk_measures(comparison_measures, figfolder):
     figfolder (str): Folder path to save the LaTeX file.
     """
     # Convert DataFrame to LaTeX
-    latex_content = comparison_measures.to_latex(index=False, header=True)
+    save_table_dual(figfolder, comparison_measures, "corr_measures")
 
-    # Additional LaTeX table customizations can be done here by manipulating latex_content string
+    # latex_content = comparison_measures.to_latex(index=False, header=True)
+
+    # # Additional LaTeX table customizations can be done here by manipulating latex_content string
     
-    # Define file path
-    file_path = f"{figfolder}/corr_measures.tex"
+    # # Define file path
+    # file_path = f"{figfolder}/corr_measures.tex"
     
-    # Save LaTeX table to file
-    with open(file_path, "w") as latex_file:
-        latex_file.write(latex_content)
-    return None
+    # # Save LaTeX table to file
+    # with open(file_path, "w") as latex_file:
+    #     latex_file.write(latex_content)
+    # return None
 
 @announce_execution
 def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk"):
