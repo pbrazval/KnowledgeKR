@@ -491,18 +491,18 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
     
     max_kknt = max(stoxwe_add['ntile_kk'])
     
-    HKR_ret = (stoxwe_add.dropna(subset=['topic_kk'])
+    HKR_NSB_ret = (stoxwe_add.dropna(subset=['topic_kk'])
                 .groupby(['yw', 'ntile_kk'])
                 .apply(lambda df: pd.Series({
                     'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
                 .reset_index()
                 .pivot_table(index='yw', columns='ntile_kk', values='eret', aggfunc='mean')
                 .rename(columns=lambda x: f'kk{x}')
-                .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
-                [['HKR']]
+                .assign(HKR_NSB=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+                [['HKR_NSB']]
                 .reset_index())
     
-    HKR_SB_ret = (stoxwe_add
+    HKR_ret = (stoxwe_add
             .loc[:, ['yw', 'ntile_kk', 'me_group', 'topic_kk', 'eretw', 'me']]
             .dropna(subset=['topic_kk'])
             .groupby(['yw', 'ntile_kk', 'me_group'])
@@ -514,14 +514,14 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
             .reset_index()
             .pivot_table(index='yw', columns='ntile_kk', values='eret_mean', aggfunc='mean')
             .rename(columns=lambda x: f'kk{x}')
-            .assign(HKR_SB=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+            .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
             .reset_index()
-            .loc[:, ['yw', 'HKR_SB']])
+            .loc[:, ['yw', 'HKR']])
     
-    HKR_SB_ret.columns.name = None
+    HKR_ret.columns.name = None
     
     eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
-               .merge(HKR_SB_ret, on='yw', how='inner')
+               .merge(HKR_NSB_ret, on='yw', how='inner')
             .rename(columns={'eret': 'eretw'})
             .dropna()
             .reset_index(drop=True))

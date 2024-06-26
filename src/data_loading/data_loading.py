@@ -305,6 +305,8 @@ def create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, comp
     topic_map_unlabeled = topic_map_unlabeled.merge(compustat_pt, on=['gvkey', 'year'], how='left')
     topic_map_unlabeled['xir_cumsum'] = np.where(topic_map_unlabeled['xi_cumsum'].isna(), 0, topic_map_unlabeled['xi_cumsum'] / topic_map_unlabeled['at'])
     topic_map_unlabeled['xir_total'] = np.where(topic_map_unlabeled['xi_yeartotal'].isna(), 0, topic_map_unlabeled['xi_yeartotal'] / topic_map_unlabeled['at'])
+    #topic_map_unlabeled["kkptratio"] = topic_map_unlabeled["K_int_Know"] / topic_map_unlabeled["at"]
+
     columns_to_fill = ['K_int_Know', 'K_int', 'at', 'Skill']
     for col in columns_to_fill:
         topic_map_unlabeled[col] = topic_map_unlabeled.groupby(['gvkey', 'year'])[col].transform(lambda x: x.fillna(method='ffill').fillna(method='bfill'))
@@ -314,7 +316,6 @@ def create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, comp
 
     # Taking the first row of each group
     topic_map_unlabeled = topic_map_unlabeled.groupby(['gvkey', 'year']).head(1).reset_index(drop=True)
-    
     industry_names = ["Cnsmr non-dur.", "Cnsmr durbl", "Manuf", "Enrgy", "Chems", "BusEq", "Telcm", 
                     "Utils", "Whlsl/Retail", "Hlth", "Other", "NoDef"]
     industry_map = {i+1: name for i, name in enumerate(industry_names)}

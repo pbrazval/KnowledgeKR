@@ -35,6 +35,11 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
                   "dicfullmc10thr10defnob40noa0_9_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "topic_kk"},
                   "embeddings_km10_ipcs": {"topic_kk": "topic_kk"}}   
     
+    if name == "dicfullmc10thr10defnob40noa0_8_4t":
+        cuts = [0, 0.85, 0.90, 0.95, 1]
+    elif name == "dicfullmc10thr10defnob40noa0_8_hdp":
+        cuts = [0, 0.85, 0.90, 0.95, 1]
+
     if name[-3:] == "hdp":
         topic_map_labeled = topic_map_unlabeled.copy()
         return label_topic_map_hdp(topic_map_labeled, name, **kwargs)
@@ -169,7 +174,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
 @announce_execution
 def tex_summary_statistics(eret_we_agg, figfolder):
     # Pick columns only in set {'MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'}:
-    desired_columns = {'Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA', 'HKR_SB'}
+    desired_columns = {'Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA', 'HKR_NSB', 'HKR_SB'}
 
     eret_we_agg = eret_we_agg.loc[:, [col for col in eret_we_agg.columns if col in desired_columns]]
         # Convert values from weekly to monthly:
@@ -208,20 +213,26 @@ def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # Plot the Amazon stock prices
     # amazon_graph(stoxda, figfolder)
     # Format date and create 'y' and 'ym' columns
-    stoxda['date'] = pd.to_datetime(stoxda['date'])
-    stoxda['y'] = stoxda['date'].dt.year
-    stoxda['ym'] = stoxda['y']*100 + stoxda['date'].dt.month
-    stox = pd.merge(stoxda, cequity_mapper, left_on=['PERMNO', 'y'], right_on=['PERMNO', 'year'], how='left')
-    stox = stox[stox['crit_ALL'] == 1]
-    stox = pd.merge(stox, topic_map, left_on=['PERMNO', 'y'], right_on=['LPERMNO', 'year'], how='left')
-    topic_map = topic_map.assign(me=lambda x: x['csho'] * x['prcc_f']) #groupby(['PERMNO', hue_var])
-    stox.set_index('date', inplace=True)
 
-    plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "Y")
-    plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "Y")
+    stox, _ = preprocess_stoxda(stoxda, cequity_mapper, topic_map)
+    plot_moment(stox, figfolder, "kurtosis", "Y", asset_weighted = False)
+    plot_moment(stox, figfolder, "kurtosis", "Y", asset_weighted = True)
+    plot_moment(stox, figfolder, "skewness", "Y", asset_weighted = False)
     #plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "M")
     #plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "M")
     return None
+
+@announce_execution
+def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
+        stoxda['date'] = pd.to_datetime(stoxda['date'])
+        stoxda['y'] = stoxda['date'].dt.year
+        stoxda['ym'] = stoxda['y']*100 + stoxda['date'].dt.month
+        topic_map = topic_map.assign(me=lambda x: x['csho'] * x['prcc_f']) #groupby(['PERMNO', hue_var])
+        stox = pd.merge(stoxda, cequity_mapper, left_on=['PERMNO', 'y'], right_on=['PERMNO', 'year'], how='left')
+        stox = stox[stox['crit_ALL'] == 1]
+        stox = pd.merge(stox, topic_map, left_on=['PERMNO', 'y'], right_on=['LPERMNO', 'year'], how='left')
+        stox.set_index('date', inplace=True)
+        return stox, topic_map
 
 from stargazer.stargazer import Stargazer
 
@@ -537,23 +548,23 @@ def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_
 
     moment_df = stox.groupby(['PERMNO', hue_var]).resample(frequency)['RET'].apply(statfunc)
     moment_df = moment_df.reset_index()
-    if not asset_weighted:
+    if asset_weighted:
         aw_suffix = "asset-weighted"
         aw_suffix_short = "aw"
-        stox_by_kk = (moment_df.reset_index().groupby([hue_var, 'date'])
-                        .agg(avg_kurt=('RET', 'mean'))
-                        .reset_index())
-        #moment_df= moment_df.reset_index()
-    else:
-        aw_suffix = "not asset-weighted"
-        aw_suffix_short = "naw"
         stoxme_df = stox.reset_index()[['PERMNO', 'date', 'me']]
         moment_df = moment_df.merge(stoxme_df, on=['PERMNO', 'date'], how='left')
         moment_df = moment_df.dropna(subset=['RET', 'me'])
         stox_by_kk = (moment_df.groupby([hue_var, 'date'])
                             .apply(lambda x: pd.Series({'avg_kurt': (x['RET'] * x['me']).sum() / x['me'].sum()}))
                             .reset_index())
-
+    else:
+        aw_suffix = "non-asset-weighted"
+        aw_suffix_short = "naw"
+        stox_by_kk = (moment_df.reset_index().groupby([hue_var, 'date'])
+                        .agg(avg_kurt=('RET', 'mean'))
+                        .reset_index())
+        #moment_df= moment_df.reset_index()
+       
     large_palette = sns.color_palette('husl', 8)
     # Find the two lowest and two highest values of ntile_kk:
     ntile_kk_values = stox_by_kk[hue_var].unique()
