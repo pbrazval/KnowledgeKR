@@ -453,7 +453,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .assign(pfkk2me3mb = lambda x: 100 * x['ntile_kk'] + 10 * x['me_group'] + x['mb_group'])
                 .assign(pfkk3me3mb = lambda x: 100 * x['ntile_kk'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
-                .loc[:, ['gvkey_x', 'pfkk3me3mb', 'pf2me3mb', 'pf5me5mb', 'pfkk2me3mb', 'fiscalyear']]
+                .loc[:, ['gvkey_x', 'pfkk3me3mb', 'pf2me3mb', 'pf5me5mb', 'pfkk2me3mb', 'fiscalyear', 'me_group']]
                 .rename(columns={'gvkey_x': 'gvkey'})
                 .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
         )

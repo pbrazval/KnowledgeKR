@@ -59,7 +59,7 @@ def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
         # Delete topic_9,...
         topic_map_labeled = topic_map_labeled.drop(columns = [f"topic_{i}" for i in range(9, 150)])
 
-        cuts = [0, 0.85, 1]
+        cuts = [0, 0.85, 0.90, 0.95, 1]
         topic_map_labeled['ntile_kk'] = (topic_map_labeled.
                                         groupby('year')['topic_kk'].
                                         transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
@@ -207,6 +207,16 @@ def explore_fmb(fmb_list, figfolder):
 def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # Plot the Amazon stock prices
     # amazon_graph(stoxda, figfolder)
+    # Format date and create 'y' and 'ym' columns
+    stoxda['date'] = pd.to_datetime(stoxda['date'])
+    stoxda['y'] = stoxda['date'].dt.year
+    stoxda['ym'] = stoxda['y']*100 + stoxda['date'].dt.month
+    stox = pd.merge(stoxda, cequity_mapper, left_on=['PERMNO', 'y'], right_on=['PERMNO', 'year'], how='left')
+    stox = stox[stox['crit_ALL'] == 1]
+    stox = pd.merge(stox, topic_map, left_on=['PERMNO', 'y'], right_on=['LPERMNO', 'year'], how='left')
+    topic_map = topic_map.assign(me=lambda x: x['csho'] * x['prcc_f']) #groupby(['PERMNO', hue_var])
+    stox.set_index('date', inplace=True)
+
     plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "Y")
     plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "skewness", "Y")
     #plot_moment(stoxda, cequity_mapper, topic_map, figfolder, "kurtosis", "M")
@@ -517,7 +527,7 @@ def tex_compare_kk_measures(comparison_measures, figfolder):
     # return None
 
 @announce_execution
-def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk"):
+def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk", asset_weighted = False):
     if moment_name == 'kurtosis':
         statfunc = pd.Series.kurt
     elif moment_name == 'skewness':
@@ -525,19 +535,25 @@ def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequ
     else:
         raise ValueError("Invalid moment_name. Choose 'kurtosis' or 'skewness'.")
 
-    # Format date and create 'y' and 'ym' columns
-    stoxda['date'] = pd.to_datetime(stoxda['date'])
-    stoxda['y'] = stoxda['date'].dt.year
-    stoxda['ym'] = stoxda['y']*100 + stoxda['date'].dt.month
-    stox = pd.merge(stoxda, cequity_mapper, left_on=['PERMNO', 'y'], right_on=['PERMNO', 'year'], how='left')
-    stox = stox[stox['crit_ALL'] == 1]
-    stox = pd.merge(stox, topic_map, left_on=['PERMNO', 'y'], right_on=['LPERMNO', 'year'], how='left')
-    stox.set_index('date', inplace=True)
     moment_df = stox.groupby(['PERMNO', hue_var]).resample(frequency)['RET'].apply(statfunc)
-    stox_by_kk = (moment_df.reset_index().groupby([hue_var, 'date'])
-                    .agg(avg_kurt=('RET', 'mean'))
-                    .reset_index())
-    moment_df= moment_df.reset_index()
+    moment_df = moment_df.reset_index()
+    if not asset_weighted:
+        aw_suffix = "asset-weighted"
+        aw_suffix_short = "aw"
+        stox_by_kk = (moment_df.reset_index().groupby([hue_var, 'date'])
+                        .agg(avg_kurt=('RET', 'mean'))
+                        .reset_index())
+        #moment_df= moment_df.reset_index()
+    else:
+        aw_suffix = "not asset-weighted"
+        aw_suffix_short = "naw"
+        stoxme_df = stox.reset_index()[['PERMNO', 'date', 'me']]
+        moment_df = moment_df.merge(stoxme_df, on=['PERMNO', 'date'], how='left')
+        moment_df = moment_df.dropna(subset=['RET', 'me'])
+        stox_by_kk = (moment_df.groupby([hue_var, 'date'])
+                            .apply(lambda x: pd.Series({'avg_kurt': (x['RET'] * x['me']).sum() / x['me'].sum()}))
+                            .reset_index())
+
     large_palette = sns.color_palette('husl', 8)
     # Find the two lowest and two highest values of ntile_kk:
     ntile_kk_values = stox_by_kk[hue_var].unique()
@@ -554,13 +570,13 @@ def plot_moment(stoxda, cequity_mapper, topic_map, figfolder, moment_name, frequ
         # Filter only rows where max_topic is between 0 and 7 (inclusive):
         stox_by_kk = stox_by_kk[stox_by_kk[hue_var].between(0, 7)]
     sns.lineplot(data=stox_by_kk, x='date', y='avg_kurt', hue=hue_var, palette=large_palette)
-    plt.title(f"{moment_name} over time by {hue_var}")
+    plt.title(f"{moment_name} ({aw_suffix}) over time by {hue_var}")
     plt.xlabel("Year-Month")
     plt.ylabel(f"{moment_name}")
     plt.legend(title='Group', fontsize='small')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f"{figfolder}/{moment_name}_by_{hue_var}_{frequency}.jpg", dpi=600)
+    plt.savefig(f"{figfolder}/{moment_name}_by_{hue_var}_{frequency}_{aw_suffix_short}.jpg", dpi=600)
     plt.clf()
     return None
 
