@@ -183,6 +183,9 @@ def tex_summary_statistics(eret_we_agg, figfolder):
     summary = summary.T
     # Multiply the values by 4.35 of all the columns except count:
     summary.loc[:, summary.columns != 'count'] = summary.loc[:, summary.columns != 'count'] * 4.35
+    # Represent count as integer
+    summary['count'] = summary['count'].astype(int)
+    
     summary['Sharpe'] = summary['mean'] / summary['std']
 
     summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']] =\
