@@ -42,7 +42,7 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
     if name[-3:] == "hdp":
         topic_map_labeled = topic_map_unlabeled.copy()
-        return label_topic_map_hdp(topic_map_labeled, name, **kwargs)
+        topic_map_labeled = label_topic_map_hdp(topic_map_labeled, name, **kwargs)
 
     topic_map_labeled = topic_map_unlabeled.copy()
     if name in topic_dict.keys():
@@ -52,7 +52,9 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
     topic_map_labeled['ntile_kk'] = (topic_map_labeled.
         groupby('year')['topic_kk'].
         transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
-    
+    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'] + 1
+    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'].astype(int)
+
     return topic_map_labeled
 
 def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
@@ -164,7 +166,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     factors.loc[2015:2021].plot()
     plt.axvline(2020 + 1/6, color='r', linestyle='--')
     # Include a blue vertical line at the date of the H1B suspension: 
-    plt.axvline(2020 + 26/53, color='b', linestyle='--')
+    # plt.axvline(2020 + 26/53, color='b', linestyle='--')
     plt.xlabel("Year")
     plt.ylabel("Cumulative return (Normalize to 100 at June 2020)")
     plt.title("Cumulative return of SMB and HKR factors")
@@ -188,14 +190,32 @@ def tex_summary_statistics(eret_we_agg, figfolder):
 
     summary['Sharpe'] = summary['mean'] / summary['std']
 
-    summary[['mean', 'std', 'min', 'max', '25\\%', '50\\%', '75\\%']] =\
-        summary[['mean', 'std', 'min', 'max', '25\\%', '50\\%', '75\\%']].applymap(to_percentage)
+    summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']] =\
+        summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']].applymap(to_percentage)
 
-    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25\\%', '50\\%', '75\\%', 'max']]
+    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25%', '50%', '75%', 'max']]
     summary['Sharpe'] = summary['Sharpe'].round(3)
-    print("Now with Sharpe ratio")
+    # Show only 3 digits after the decimal point for the Sharpe ratio:
+    summary['Sharpe'] = summary['Sharpe'].apply(lambda x: f"{x:.3f}")
     
-    save_table_dual(figfolder, summary, "summary_statistics")
+    # Rename columns:
+    summary = summary.rename(columns = {"count": "Count", "mean": "Mean", "std": "SD", "min": "Min", "25%": "25\\%", "50%": "50\\%", "75%": "75\\%", "max": "Max"})
+    # Remove min and max columns
+    summary = summary.drop(columns = ["Min", "Max"])
+    # Show row names as a column:
+    summary = summary.reset_index()
+    summary = summary.rename(columns = {"index": "Factor"})
+    
+    table = summary
+    filename = "summary_statistics"
+    with open(figfolder + filename + ".html", 'w') as html_file:
+            html_file.write(table.to_html())
+    
+    # Remove row where Factor is in set {'HKR_NSB', 'HKR_SB'}:
+    table = table[~table['Factor'].isin({'HKR_NSB', 'HKR_SB'})]
+
+    with open(figfolder + filename + ".tex", 'w') as tex_file:
+            tex_file.write(table.to_latex(index = False, header = True))
 
 def to_percentage(x):
     return f"{x * 100:.2f}\\%"
@@ -251,7 +271,7 @@ def tex_summary(fmb_list, figfolder):
     # stargazer.show_footer = False
     stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
-    model_vector = [f"model\\_{i+1}" for i in range(len(fmb_list))]
+    model_vector = [f"model {i+1}" for i in range(len(fmb_list))]
     stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
@@ -389,6 +409,20 @@ def fig_share_dominant_kk_by_ind(topic_map, figfolder):
 
     # Save plot above to "stackedplot_at.png" inside the "figfolder" directory:
     stackedplot_n.figure.savefig(figfolder + "stackedplot_n.png", bbox_inches='tight', dpi=300)
+    
+    plt.close()
+
+    # Do the same for totalat:
+    stackedplot_at = sns.barplot(data=firms_by_ind, x='year', y='totalat', hue='ind12', dodge=False)
+    stackedplot_at.set_ylabel('Total assets of all dominant-KK firms')
+    stackedplot_at.set_xlabel('Year')
+    stackedplot_at.set_title('Total assets of all dominant-KK firms by Industry')
+    stackedplot_at.legend(title='Industry', bbox_to_anchor=(1, 1))
+    plt.xticks(rotation=45)
+
+    # Save plot above to "stackedplot_at.png" inside the "figfolder" directory:
+    stackedplot_at.figure.savefig(figfolder + "stackedplot_at.png", bbox_inches='tight', dpi=300)
+
     plt.close()
 
 @announce_execution
@@ -560,29 +594,37 @@ def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_
        
     large_palette = sns.color_palette('husl', 8)
     # Find the two lowest and two highest values of ntile_kk:
-    ntile_kk_values = stox_by_kk[hue_var].unique()
-    sorted_values = sorted(ntile_kk_values)
-
-    lowest_two = sorted_values[:1]
-    highest_two = sorted_values[-1:]
-    keep = lowest_two + highest_two
 
     # Filter stox_by_kk to only include ntile_kk values equal to the two lowest and two highest values of ntile_kk
     if hue_var == 'ntile_kk':
-        stox_by_kk = stox_by_kk[stox_by_kk[hue_var].isin(keep)]
+        stox_by_kk = keep_extremes(stox_by_kk, hue_var, 1)
+        if max(stox_by_kk[hue_var]) == 10:
+            ntilename = "Decile"
+        else:
+            ntilename = hue_var
     if hue_var == 'max_topic':
         # Filter only rows where max_topic is between 0 and 7 (inclusive):
         stox_by_kk = stox_by_kk[stox_by_kk[hue_var].between(0, 7)]
     sns.lineplot(data=stox_by_kk, x='date', y='avg_kurt', hue=hue_var, palette=large_palette)
-    plt.title(f"{moment_name} ({aw_suffix}) over time by {hue_var}")
+    plt.title(f"Annual {moment_name} of daily returns across firms ({aw_suffix})")
     plt.xlabel("Year-Month")
     plt.ylabel(f"{moment_name}")
-    plt.legend(title='Group', fontsize='small')
+    plt.legend(title=ntilename, fontsize='small')
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(f"{figfolder}/{moment_name}_by_{hue_var}_{frequency}_{aw_suffix_short}.jpg", dpi=600)
     plt.clf()
     return None
+
+def keep_extremes(df, hue_var, num):
+    df = df.copy()
+    ntile_kk_values = df[hue_var].unique()
+    sorted_values = sorted(ntile_kk_values)
+    lowest_two = sorted_values[:num]
+    highest_two = sorted_values[-num:]
+    keep = lowest_two + highest_two
+    df = df[df[hue_var].isin(keep)]
+    return df
 
 @announce_execution
 def plot_returns(stoxwe_with_pfs, figfolder):
@@ -627,28 +669,31 @@ def plot_returns(stoxwe_with_pfs, figfolder):
                       .apply(lambda x: x.assign(eret3ma=x['eret'].rolling(window=13, min_periods=1).mean()))
                       .reset_index(drop=True))
     
-    plt.figure()
-    sns.lineplot(data=we_ret_bybin, x='yw', y='eret', hue='ntile_kk')
-    plt.xlabel("Year-month")
-    plt.ylabel("Asset-weighted weekly returns")
-    plt.legend(fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.savefig(figfolder + "aw_wr.jpg", dpi=600)
-    plt.clf()
+    # The following plot is commented out because it does not convey any useful information
+    # plt.figure()
+    # sns.lineplot(data=we_ret_bybin, x='yw', y='eret', hue='ntile_kk')
+    # plt.xlabel("Year-month")
+    # plt.ylabel("Asset-weighted weekly returns")
+    # plt.legend(fontsize=14)
+    # plt.xticks(fontsize=14)
+    # plt.yticks(fontsize=14)
+    # plt.savefig(figfolder + "aw_wr.jpg", dpi=600)
+    # plt.clf()
+
+    # The following plot is commented out because it does not convey any useful information    
+    # plt.figure()
+    # sns.lineplot(data=qt_ret_bygroup, x='yw', y='eret3ma', hue='ntile_kk')
+    # plt.xlabel("Year-week")
+    # plt.ylabel("Asset-weighted weekly returns, 3MA")
+    # plt.legend(fontsize=14)
+    # plt.xticks(fontsize=14)
+    # plt.yticks(fontsize=14)
+    # plt.savefig(figfolder + "aw_wr_3ma.jpg", dpi=600)
+    # plt.clf()
     
+    data_to_show = keep_extremes(we_ret_bybin, 'ntile_kk', 1)
     plt.figure()
-    sns.lineplot(data=qt_ret_bygroup, x='yw', y='eret3ma', hue='ntile_kk')
-    plt.xlabel("Year-week")
-    plt.ylabel("Asset-weighted weekly returns, 3MA")
-    plt.legend(fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.savefig(figfolder + "aw_wr_3ma.jpg", dpi=600)
-    plt.clf()
-    
-    plt.figure()
-    sns.lineplot(data=we_ret_bybin, x='yw', y='eret_accum', hue='ntile_kk')
+    sns.lineplot(data=data_to_show, x='yw', y='eret_accum', hue='ntile_kk')
     plt.xlabel("Year-week")
     plt.ylabel("Asset-weighted accumulated weekly returns")
     plt.legend(fontsize=14)
@@ -657,19 +702,20 @@ def plot_returns(stoxwe_with_pfs, figfolder):
     plt.savefig(figfolder + "aw_accum_wr.jpg", dpi=600)
     plt.clf()
 
-    plt.figure()
-    sns.lineplot(data=we_ret_bybin, x='yw', y='sderet', hue='ntile_kk')
-    plt.xlabel("Year-week")
-    plt.ylabel("Weekly standard deviation of returns by n-tile")
-    plt.legend(fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.ylim(0.02,0.14)
-    plt.savefig(figfolder + "sd_eret.jpg", dpi=600)
-    plt.clf()
+    # The following plot is commented out because it does not convey any useful information
+    # plt.figure()
+    # sns.lineplot(data=we_ret_bybin, x='yw', y='sderet', hue='ntile_kk')
+    # plt.xlabel("Year-week")
+    # plt.ylabel("Weekly standard deviation of returns by n-tile")
+    # plt.legend(fontsize=14)
+    # plt.xticks(fontsize=14)
+    # plt.yticks(fontsize=14)
+    # plt.ylim(0.02,0.14)
+    # plt.savefig(figfolder + "sd_eret.jpg", dpi=600)
+    # plt.clf()
     
     plt.figure()
-    sns.lineplot(data=we_ret_bybin, x='yw', y='sderet_4wa', hue='ntile_kk')
+    sns.lineplot(data=data_to_show, x='yw', y='sderet_4wa', hue='ntile_kk')
     plt.xlabel("Year-week")
     plt.ylabel("Weekly standard deviation of returns by n-tile (4-week MA)")
     plt.legend(fontsize=14)
@@ -680,7 +726,7 @@ def plot_returns(stoxwe_with_pfs, figfolder):
     plt.clf()
 
     plt.figure()
-    sns.lineplot(data=we_ret_bybin, x='yw', y='sderet_12wa', hue='ntile_kk')
+    sns.lineplot(data=data_to_show, x='yw', y='sderet_12wa', hue='ntile_kk')
     plt.xlabel("Year-week")
     plt.ylabel("Weekly standard deviation of returns by n-tile (12-week MA)")
     plt.legend(fontsize=14)

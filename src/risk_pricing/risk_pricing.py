@@ -490,6 +490,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
     # # Calculate HKR returns
     
     max_kknt = max(stoxwe_add['ntile_kk'])
+    min_kknt = min(stoxwe_add['ntile_kk'])
     
     HKR_NSB_ret = (stoxwe_add.dropna(subset=['topic_kk'])
                 .groupby(['yw', 'ntile_kk'])
@@ -498,7 +499,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .reset_index()
                 .pivot_table(index='yw', columns='ntile_kk', values='eret', aggfunc='mean')
                 .rename(columns=lambda x: f'kk{x}')
-                .assign(HKR_NSB=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+                .assign(HKR_NSB=lambda df: df[f'kk{max_kknt}'] - df[f'kk{min_kknt}'])
                 [['HKR_NSB']]
                 .reset_index())
     
@@ -514,7 +515,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
             .reset_index()
             .pivot_table(index='yw', columns='ntile_kk', values='eret_mean', aggfunc='mean')
             .rename(columns=lambda x: f'kk{x}')
-            .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df['kk0'])
+            .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df[f'kk{min_kknt}'])
             .reset_index()
             .loc[:, ['yw', 'HKR']])
     
