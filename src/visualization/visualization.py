@@ -28,12 +28,12 @@ def announce_execution(func):
     return wrapper
 
 def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], **kwargs):
-    topic_dict = {"dicfullmc10thr10defnob40noa1_4t": {"topic_0": "topic_kk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"},
-                  "dicfullmc10thr10defnob40noa0_8_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "topic_kk"},
-                  "dicfullmc10thr10defnob5noa1_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "topic_kk"},
-                  "dicfullmc10thr10defnob5noa0_8_4t": {"topic_0": "topic_energy", "topic_1": "topic_tech", "topic_2": "topic_finl", "topic_3": "topic_kk"},
-                  "dicfullmc10thr10defnob40noa0_9_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "topic_kk"},
-                  "embeddings_km10_ipcs": {"topic_kk": "topic_kk"}}   
+    topic_dict = {"dicfullmc10thr10defnob40noa1_4t": {"topic_0": "kkrisk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"},
+                  "dicfullmc10thr10defnob40noa0_8_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
+                  "dicfullmc10thr10defnob5noa1_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
+                  "dicfullmc10thr10defnob5noa0_8_4t": {"topic_0": "topic_energy", "topic_1": "topic_tech", "topic_2": "topic_finl", "topic_3": "kkrisk"},
+                  "dicfullmc10thr10defnob40noa0_9_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
+                  "embeddings_km10_ipcs": {"kkrisk": "kkrisk"}}   
     
     if name == "dicfullmc10thr10defnob40noa0_8_4t":
         cuts = [0, 0.85, 0.90, 0.95, 1]
@@ -58,7 +58,7 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
 def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
     print("Labeling HDP topic map")
     if name == "dicfullmc10thr10defnob40noa0_8_hdp":
-        topic_map_unlabeled['topic_kk'] = topic_map_unlabeled['topic_1'] + topic_map_unlabeled['topic_9']  + topic_map_unlabeled['topic_22'] + topic_map_unlabeled['topic_32']
+        topic_map_unlabeled['kkrisk'] = topic_map_unlabeled['topic_1'] + topic_map_unlabeled['topic_9']  + topic_map_unlabeled['topic_22'] + topic_map_unlabeled['topic_32']
         # Delete topic_1
         topic_map_labeled = topic_map_unlabeled.drop(columns = ["topic_1"])
         # Delete topic_9,...
@@ -77,7 +77,7 @@ def label_dicfullmc10thr10defnob40noa1_4t(topic_map_unlabeled):
     
     topic_map_labeled = topic_map_unlabeled.copy()
     
-    topic_map_labeled.rename(columns={"topic_0": "topic_kk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"}, inplace=True)
+    topic_map_labeled.rename(columns={"topic_0": "kkrisk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"}, inplace=True)
     
     return topic_map_labeled, labels
 
@@ -185,20 +185,20 @@ def tex_summary_statistics(eret_we_agg, figfolder):
     summary.loc[:, summary.columns != 'count'] = summary.loc[:, summary.columns != 'count'] * 4.35
     # Represent count as integer
     summary['count'] = summary['count'].astype(int)
-    
+
     summary['Sharpe'] = summary['mean'] / summary['std']
 
-    summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']] =\
-        summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']].applymap(to_percentage)
+    summary[['mean', 'std', 'min', 'max', '25\\%', '50\\%', '75\\%']] =\
+        summary[['mean', 'std', 'min', 'max', '25\\%', '50\\%', '75\\%']].applymap(to_percentage)
 
-    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25%', '50%', '75%', 'max']]
+    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25\\%', '50\\%', '75\\%', 'max']]
     summary['Sharpe'] = summary['Sharpe'].round(3)
     print("Now with Sharpe ratio")
     
     save_table_dual(figfolder, summary, "summary_statistics")
 
 def to_percentage(x):
-    return f"{x * 100:.2f}%"
+    return f"{x * 100:.2f}\\%"
 
 def save_table_dual(figfolder, table, filename):
     with open(figfolder + filename + ".tex", 'w') as tex_file:
@@ -251,7 +251,7 @@ def tex_summary(fmb_list, figfolder):
     # stargazer.show_footer = False
     stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
-    model_vector = [f"model_{i+1}" for i in range(len(fmb_list))]
+    model_vector = [f"model\\_{i+1}" for i in range(len(fmb_list))]
     stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
@@ -279,7 +279,7 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
         # Plot histogram on the respective subplot
         sns.histplot(data=data_filtered, x='topic_kk', bins=15, kde=False, ax=axes[i], stat='probability')
         axes[i].set_title(f'{value}', fontsize=18)
-        axes[i].set_xlabel('topic_kk')
+        axes[i].set_xlabel('kkrisk')
         axes[i].set_ylabel('Probability')
         axes[i].set_xlim(0.05, 0.45)  # Set x-axis limits for consistency
 
@@ -293,8 +293,8 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
 def fig_histogram_kk(topic_map, figfolder):
     plt.figure()
     sns.histplot(data=topic_map, x='topic_kk', bins=20, kde=False, stat='probability')  # Adjust bins as needed
-    plt.title('Histogram of topic_kk')
-    plt.xlabel('Values of topic_kk')
+    plt.title('Histogram of kkrisk')
+    plt.xlabel('Values of kkrisk')
     plt.ylabel('Probability')
     # Save the figure before showing it
     plt.savefig(figfolder + "hist_kk_agg.png", dpi=600)
@@ -314,7 +314,7 @@ def fig_heatmap_topicvsikpt(topic_map, figfolder, nt):
             geom_tile(aes(fill='count')) +  # Use geom_tile for heatmap squares
             geom_text(aes(label='round(count, 2)'), size=20) +  # Add text labels
             scale_fill_gradient2(low="white", high="red", mid="pink", midpoint=firms_by_ik['count'].mean()) +  # Gradient fill
-            labs(x="N-tiles of Intangible Capital Risk measured by Topic_kk",
+            labs(x="N-tiles of Intangible Capital Risk measured by kkrisk",
                 y="N-tiles of Intangible Capital Intensity",
                 fill='Count') +  # Labels
             theme(legend_title=element_text(size=14),  # Adjust legend title font size
@@ -342,7 +342,7 @@ def fig_heatmap_topicvskkpt(topic_map, figfolder, nt):
             geom_tile(aes(fill='count')) +  # Use geom_tile for heatmap squares
             geom_text(aes(label='round(count, 2)'), size=20) +  # Add text labels
             scale_fill_gradient2(low="white", high="red", mid="pink", midpoint=firms_by_kk['count'].mean()) +  # Gradient fill
-            labs(x="N-tiles of Knowledge Capital Risk measured by Topic_kk",
+            labs(x="N-tiles of Knowledge Capital Risk measured by kkrisk",
                 y="N-tiles of Knowledge Capital Intensity",
                 fill='Count') +  # Labels
             theme(legend_title=element_text(size=14),  # Adjust legend title font size
@@ -462,11 +462,13 @@ def fig_mean_tiy(df, figfolder):
     # Create the plot
     plt.figure(figsize=(10, 6))
     sns.lineplot(data=long_df, x='year', y='intensity', hue='topic')
+    # Set ylim
+    plt.ylim(0.1, 0.5)
     
     # Setting labels and title
     plt.xlabel("Year")
     plt.ylabel("Topic Intensity")
-    plt.title("Mean Topic Intensity by Year")
+    plt.title("Mean Knowledge Capital Risk by Year")
     plt.legend(title='Topic', bbox_to_anchor=(1.05, 1), loc='upper left')
     
     # Adjust font sizes for readability
@@ -528,18 +530,6 @@ def tex_compare_kk_measures(comparison_measures, figfolder):
     # Convert DataFrame to LaTeX
     save_table_dual(figfolder, comparison_measures, "corr_measures")
 
-    # latex_content = comparison_measures.to_latex(index=False, header=True)
-
-    # # Additional LaTeX table customizations can be done here by manipulating latex_content string
-    
-    # # Define file path
-    # file_path = f"{figfolder}/corr_measures.tex"
-    
-    # # Save LaTeX table to file
-    # with open(file_path, "w") as latex_file:
-    #     latex_file.write(latex_content)
-    # return None
-
 @announce_execution
 def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk", asset_weighted = False):
     if moment_name == 'kurtosis':
@@ -573,8 +563,8 @@ def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_
     ntile_kk_values = stox_by_kk[hue_var].unique()
     sorted_values = sorted(ntile_kk_values)
 
-    lowest_two = sorted_values[:2]
-    highest_two = sorted_values[-2:]
+    lowest_two = sorted_values[:1]
+    highest_two = sorted_values[-1:]
     keep = lowest_two + highest_two
 
     # Filter stox_by_kk to only include ntile_kk values equal to the two lowest and two highest values of ntile_kk
@@ -626,6 +616,11 @@ def plot_returns(stoxwe_with_pfs, figfolder):
     .apply(lambda x: x.assign(eret_accum=x['eret'].cumsum()))
     .reset_index(drop=True))
     
+    # Create we_ret_bybin with a 3-month moving average of sderet:
+    we_ret_bybin['sderet_4wa'] = we_ret_bybin.groupby('ntile_kk')['sderet'].transform(lambda x: x.rolling(window=4, min_periods=1).mean())
+
+    # Same for 12-week moving average of sderet:
+    we_ret_bybin['sderet_12wa'] = we_ret_bybin.groupby('ntile_kk')['sderet'].transform(lambda x: x.rolling(window=12, min_periods=1).mean())
 
     qt_ret_bygroup = (we_ret_bybin
                       .groupby('ntile_kk')
@@ -673,4 +668,26 @@ def plot_returns(stoxwe_with_pfs, figfolder):
     plt.savefig(figfolder + "sd_eret.jpg", dpi=600)
     plt.clf()
     
+    plt.figure()
+    sns.lineplot(data=we_ret_bybin, x='yw', y='sderet_4wa', hue='ntile_kk')
+    plt.xlabel("Year-week")
+    plt.ylabel("Weekly standard deviation of returns by n-tile (4-week MA)")
+    plt.legend(fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.ylim(0.02,0.14)
+    plt.savefig(figfolder + "sd_eret_4ma.jpg", dpi=600)
+    plt.clf()
+
+    plt.figure()
+    sns.lineplot(data=we_ret_bybin, x='yw', y='sderet_12wa', hue='ntile_kk')
+    plt.xlabel("Year-week")
+    plt.ylabel("Weekly standard deviation of returns by n-tile (12-week MA)")
+    plt.legend(fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.ylim(0.02,0.14)
+    plt.savefig(figfolder + "sd_eret_12ma.jpg", dpi=600)
+    plt.clf()
+
     return None    
