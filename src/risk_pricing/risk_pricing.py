@@ -398,7 +398,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
     pfs = (stoxwe
         .query('yw % 100 == 26')  # Filter rows where yw % 100 == 26
         .drop(columns=['cusip'])  # Drop the 'cusip' column
-        .dropna(subset=['me', 'mb'])  # Drop rows where 'me' or 'mb' is NA
+        .dropna(subset=['me', 'mb'])  # Drop rows where x'me' or 'mb' is NA
         .groupby('y')  # Group by 'y'
         .apply(lambda df: df.assign(  # Use apply to perform the following operations within each group
             med_NYSE_me=df.loc[df['exchg'] == 11, 'me'].median(),  # Calculate median of 'me' for exchg == 11
@@ -534,11 +534,11 @@ def  famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
     if formula is None:
         if "CMA" in eret_we.columns:
             case = "ff5"
-            formula = "eretw ~ MktRF + SMB + HML + CMA + RMW + HKR"
+            formula = "eretw ~ 1 + MktRF + SMB + HML + CMA + RMW + HKR"
         else:
             case = "ff3"
-            formula = "eretw ~ MktRF + SMB + HML + HKR"
-    elif formula == "eretw ~ MktRF + HKR":
+            formula = "eretw ~ 1 + MktRF + SMB + HML + HKR"
+    elif formula == "eretw ~ 1 + MktRF + HKR":
         case = "ff1"
     else:
         raise ValueError("Invalid formula. Please provide a valid formula for the regression.")
@@ -561,48 +561,123 @@ def  famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
         # Extract coefficients for each window and create a DataFrame
         for idx, params in rres.params.iterrows():
             if case == "ff3":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
+                results_list.append([idx, pf_name,  params['MktRF'], params['SMB'], params['HML'], params['HKR']])
             elif case == "ff5":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
+                results_list.append([idx, pf_name,  params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
             elif case == "ff1":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['HKR']])
+                results_list.append([idx, pf_name, params['MktRF'], params['HKR']])
 
     # Convert the list of results into a DataFrame
     if case == "ff3":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'MktRF', 'SMB', 'HML', 'HKR'])
     elif case == "ff5":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname,  'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
     elif case == "ff1":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'Intercept', 'MktRF', 'HKR'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'MktRF', 'HKR'])
         
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
-
+    # Added today: Jul 1st 2024
+    results_df.dropna(inplace=True) 
     indexed_df = results_df.set_index([pfname, 'yw'], inplace=False)
-    fmb = FamaMacBeth.from_formula(formula, indexed_df).fit(cov_type="kernel")
+    print("New kernel")
+    fmb = FamaMacBeth.from_formula(formula, indexed_df).fit(cov_type='kernel')
     return fmb, indexed_df
 
 def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
     eret_we, stoxwe_add = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts)
+    print("Finished processing stoxwe")
     fmb, indexed_df = rp.famaMacBeth(eret_we, pfname, formula = formula, window_size=window_size)
+    print("Finished Fama-MacBeth")
     return fmb, indexed_df, eret_we, stoxwe_add
 
+def pseudo_monthly(eret_we_agg):
+    eret_we_agg = eret_we_agg.reset_index()
+    eret_we_agg.yw = eret_we_agg.yw.astype(int)
+    def convert_yw_to_date(yw):
+        year = yw // 100
+        week = yw % 100
+        # Create a date corresponding to the first day of the year
+        date = pd.to_datetime(year.astype(str) + '0101', format='%Y%m%d')
+        # Add the number of weeks to get the first day of the week
+        return date + pd.to_timedelta((week - 1) * 7, unit='D')
 
-def ret_nwks_ahead(eret_we_agg, n):
+    # Apply the function to the yw column
+    eret_we_agg['date'] = convert_yw_to_date(eret_we_agg['yw'])
+    # Keep only columns whose names match one of the set: date, eretw, Mkt.RF, SMB, HML, RMW, CMA, RF, HKR, HKR_NSB
+    columns_to_keep = {'date', 'eretw', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA', 'RF', 'HKR', 'HKR_NSB'}
+    # Drop columns index, yw, and any other column whose name is not in columns_to_keep
+    eret_we_agg = eret_we_agg[eret_we_agg.columns.intersection(columns_to_keep)]
+
+    columns_to_aggregate = ['eretw', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA', 'RF', 'HKR', 'HKR_NSB']
+
+    # Define a function to aggregate groups of 4 rows
+    def aggregate_groups(df):
+        # Create a grouping variable
+        df['group'] = df.index // 4
+        
+        # Define aggregation rules
+        agg_rules = {'date': ('date', 'last')}
+        
+        for col in columns_to_aggregate:
+            if col in df.columns:
+                agg_rules[col] = (col, 'sum')
+        
+        # Aggregate the groups
+        pseudo_monthly = df.groupby('group').agg(**agg_rules).reset_index(drop=True)
+        
+        return pseudo_monthly
+
+    # Apply the aggregation function
+    pseudo_monthly = aggregate_groups(eret_we_agg)
+    return pseudo_monthly
+
+def ret_nperiods_ahead(eret_we_agg, n):
     eret_we_agg[f'Mkt.RF_{n}w'] = (eret_we_agg[f'Mkt.RF']
             .rolling(window=n)
             .sum()
             .shift(-n))
     return eret_we_agg
 
-def HKR_vs_mktrf(eret_we_agg):
+def HKR_vs_mktrf_pmo(eret_pmo_agg):
 
-    eret_we_agg = ret_nwks_ahead(eret_we_agg, 4)
-    eret_we_agg = ret_nwks_ahead(eret_we_agg, 12)
-    eret_we_agg = ret_nwks_ahead(eret_we_agg, 52)
-    eret_we_agg = ret_nwks_ahead(eret_we_agg, 104)
-    eret_we_agg = ret_nwks_ahead(eret_we_agg, 156)
-    #eret_we_agg = ret_nwks_ahead(eret_we_agg, 52*4)
-    #eret_we_agg = ret_nwks_ahead(eret_we_agg, 52*5)
+    eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 1)
+    eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 3)
+    eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 13)
+    eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 26)
+    eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 39)
+    #eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 52*4)
+    #eret_pmo_agg = ret_nperiods_ahead(eret_pmo_agg, 52*5)
+
+    eret_pmo_agg.rename(columns = {'Mkt.RF_1w': 'MktRF_4w', 
+                                'Mkt.RF_3w': 'MktRF_12w', 
+                                'Mkt.RF_13w': 'MktRF_52w', 
+                                'Mkt.RF_26w': 'MktRF_104w', 
+                                'Mkt.RF_39w': 'MktRF_156w'#, 'Mkt.RF_208w': 'MktRF_208w', 'Mkt.RF_260w': 'MktRF_260w', 
+                                }, inplace=True)
+
+    summary = (summary_col([smf.ols(formula="MktRF_4w ~ SMB + HML + HKR", data=eret_pmo_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 1}),  # cov_type='HAC', cov_kwds={'maxlags': 4}: Should be added?
+                            smf.ols(formula="MktRF_12w ~ SMB + HML + HKR", data=eret_pmo_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 3}),#fit(cov_type='HAC', cov_kwds={'maxlags': 12}), 
+                            smf.ols(formula="MktRF_52w ~ SMB + HML + HKR", data=eret_pmo_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 13}),#fit(cov_type='HAC', cov_kwds={'maxlags': 52}), 
+                            smf.ols(formula="MktRF_104w ~ SMB + HML + HKR", data=eret_pmo_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 26}),#fit(cov_type='HAC', cov_kwds={'maxlags': 104}), 
+                            smf.ols(formula="MktRF_156w ~ SMB + HML + HKR", data=eret_pmo_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 39}),#fit(cov_type='HAC', cov_kwds={'maxlags': 156})#, sm.formula.ols(formula="MktRF_208w ~ HKR", data=eret_pmo_agg).fit(), sm.formula.ols(formula="MktRF_260w ~ HKR", data=eret_pmo_agg)
+                            ],  # List of regression result objects
+                        model_names=['4wa', '12wa', '52wa', '104wa', '156wa'],#, '208wa', '260wa'],  # Names for each model
+                        stars=True,  # Include significance stars
+                        float_format='%0.4f',  # Format for displaying coefficients
+                        regressor_order=['HKR', 'SMB', 'HML'],  # Order of variables in the table
+                        drop_omitted=True))  # Drop omitted variables
+    return summary
+
+def HKR_vs_mktrf(eret_we_agg):
+    eret_we_agg = eret_we_agg[eret_we_agg['yw'] > 200900]
+    eret_we_agg = eret_we_agg[eret_we_agg['yw'] < 202012]
+    eret_we_agg = ret_nperiods_ahead(eret_we_agg, 4)
+    eret_we_agg = ret_nperiods_ahead(eret_we_agg, 12)
+    eret_we_agg = ret_nperiods_ahead(eret_we_agg, 52)
+    eret_we_agg = ret_nperiods_ahead(eret_we_agg, 104)
+    eret_we_agg = ret_nperiods_ahead(eret_we_agg, 156)
+    #eret_we_agg = ret_nperiods_ahead(eret_we_agg, 52*4)
+    #eret_we_agg = ret_nperiods_ahead(eret_we_agg, 52*5)
 
     eret_we_agg.rename(columns = {'Mkt.RF_4w': 'MktRF_4w', 
                                 'Mkt.RF_12w': 'MktRF_12w', 
@@ -611,15 +686,15 @@ def HKR_vs_mktrf(eret_we_agg):
                                 'Mkt.RF_156w': 'MktRF_156w'#, 'Mkt.RF_208w': 'MktRF_208w', 'Mkt.RF_260w': 'MktRF_260w', 
                                 }, inplace=True)
 
-    summary = (summary_col([sm.formula.ols(formula="MktRF_4w ~ HKR", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_12w ~ HKR", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_52w ~ HKR", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_104w ~ HKR", data=eret_we_agg).fit(), 
-                            sm.formula.ols(formula="MktRF_156w ~ HKR", data=eret_we_agg).fit()#, sm.formula.ols(formula="MktRF_208w ~ HKR", data=eret_we_agg).fit(), sm.formula.ols(formula="MktRF_260w ~ HKR", data=eret_we_agg)
+    summary = (summary_col([smf.ols(formula="MktRF_4w ~ SMB + HML + HKR", data=eret_we_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 4}),  # cov_type='HAC', cov_kwds={'maxlags': 4}: Should be added?
+                            smf.ols(formula="MktRF_12w ~ SMB + HML + HKR", data=eret_we_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 12}),#fit(cov_type='HAC', cov_kwds={'maxlags': 12}), 
+                            smf.ols(formula="MktRF_52w ~ SMB + HML + HKR", data=eret_we_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 52}),#fit(cov_type='HAC', cov_kwds={'maxlags': 52}), 
+                            smf.ols(formula="MktRF_104w ~ SMB + HML + HKR", data=eret_we_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 104}),#fit(cov_type='HAC', cov_kwds={'maxlags': 104}), 
+                            smf.ols(formula="MktRF_156w ~ SMB + HML + HKR", data=eret_we_agg).fit(cov_type='HAC', cov_kwds={'maxlags': 156}),#fit(cov_type='HAC', cov_kwds={'maxlags': 156})#, sm.formula.ols(formula="MktRF_208w ~ HKR", data=eret_we_agg).fit(), sm.formula.ols(formula="MktRF_260w ~ HKR", data=eret_we_agg)
                             ],  # List of regression result objects
                         model_names=['4wa', '12wa', '52wa', '104wa', '156wa'],#, '208wa', '260wa'],  # Names for each model
                         stars=True,  # Include significance stars
                         float_format='%0.4f',  # Format for displaying coefficients
-                        regressor_order=['HKR'],  # Order of variables in the table
+                        regressor_order=['HKR', 'SMB', 'HML'],  # Order of variables in the table
                         drop_omitted=False))  # Drop omitted variables
     return summary

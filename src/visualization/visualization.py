@@ -129,17 +129,23 @@ def explore_eret_we(eret_we, figfolder):
     eret_we_agg = (eret_we
             .groupby('yw')
             .mean())
+    eret_pmo_agg = rp.pseudo_monthly(eret_we_agg) 
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
-    tex_HKR_vs_mktrf(eret_we_agg, figfolder)
+    tex_HKR_vs_mktrf(eret_pmo_agg, figfolder)
     tex_summary_statistics(eret_we_agg, figfolder)
     return None
 
 @announce_execution
-def tex_HKR_vs_mktrf(eret_we_agg, figfolder):
-    summary = rp.HKR_vs_mktrf(eret_we_agg)
+def tex_HKR_vs_mktrf(eret_pmo_agg, figfolder):
+    print("Now using pseudo-monthly returns")
+    summary = rp.HKR_vs_mktrf_pmo(eret_pmo_agg)
+    print("Finished using pseudo-monthly returns!")
     # Define the file path for the tex file
-    tex_content = summary.as_latex()
-    
+    # Save as latex with a given label:
+    tex_content = summary.as_latex(label = "tab:HKR_vs_mktrf")
+    # Substitute substring "label{}" by "label{tab:HKR_vs_mktrf}":
+    tex_content = tex_content.replace("\\begin\{table\}", "\\begin\{table\}[H!]")
+    tex_content = tex_content.replace("caption\{\}", "caption\{HKR vs. Market Return Weeks Ahead: Summary Statistics\}")
     # Remove the footnotes section from the LaTeX content
     tex_content = tex_content.split("\\bigskip")[0]
     
@@ -158,7 +164,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
              )
     factors = factors + 1
     factors = factors.cumprod()
-    h1b_date = pd.to_datetime("20200623", errors="coerce", format="%Y%m%d")
+    h1b_date = pd.to_datetime("20200301", errors="coerce", format="%Y%m%d")
     year_week = h1b_date.strftime('%Y%U')
     factors = factors.mul(100 / factors.loc[int(year_week)])
     factors.index  = factors.index // 100 + (factors.index % 100) / 53
@@ -168,7 +174,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     # Include a blue vertical line at the date of the H1B suspension: 
     # plt.axvline(2020 + 26/53, color='b', linestyle='--')
     plt.xlabel("Year")
-    plt.ylabel("Cumulative return (Normalize to 100 at June 2020)")
+    plt.ylabel("Cumulative return (Normalized to 100 at March 1st 2020)")
     plt.title("Cumulative return of SMB and HKR factors")
     plt.savefig(figfolder + "h1b_vs_smb_kkhml.jpg", dpi=600)
     plt.close()
@@ -215,14 +221,18 @@ def tex_summary_statistics(eret_we_agg, figfolder):
     table = table[~table['Factor'].isin({'HKR_NSB', 'HKR_SB'})]
 
     with open(figfolder + filename + ".tex", 'w') as tex_file:
-            tex_file.write(table.to_latex(index = False, header = True))
+            contents = table.to_latex(index = False, header = True, position = "[H!]", label = "tab:summary_statistics",
+                caption = "Summary Statistics of Factor Returns. This table presents key statistics for various asset pricing factors, including the market factor (Mkt.RF), size (SMB), value (HML), investment (CMA), profitability (RMW), and the high knowledge factor (HKR). Values are converted to monthly frequency.")
+            # Substitute substring "label{}" by "label{tab:summary_statistics}":
+            contents = contents.replace("\\begin\{table\}", "\\begin\{table\} \n \\centering")
+            tex_file.write(contents)
 
 def to_percentage(x):
     return f"{x * 100:.2f}\\%"
 
 def save_table_dual(figfolder, table, filename):
     with open(figfolder + filename + ".tex", 'w') as tex_file:
-        tex_file.write(table.to_latex(index = False, header = True))
+        tex_file.write(table.to_latex(index = False, label = f"tab:{filename}", header = True, position = "[H!]"))
 
     # Print as HTML as well:
     with open(figfolder + filename + ".html", 'w') as html_file:
@@ -259,19 +269,19 @@ def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
 
 from stargazer.stargazer import Stargazer
 
-@announce_execution
 def tex_summary(fmb_list, figfolder):
     stargazer = Stargazer(fmb_list)
     stargazer.significant_digits(5)
-    stargazer.title('Fama-MacBeth Regressions')
-    stargazer.covariate_order(['MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'])
+    stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns. This table presents the results of Fama-MacBeth regressions using three model specifications.")
+    stargazer.covariate_order(['HKR', 'MktRF', 'SMB', 'HML', 'RMW', 'CMA', 'Intercept'])
     stargazer.show_degrees_of_freedom(False)
     stargazer.show_f_statistic = False
     stargazer.show_residual_std_err = False
+    stargazer.table_label = "tab:fmb_results"
     # stargazer.show_footer = False
     stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
-    model_vector = [f"model {i+1}" for i in range(len(fmb_list))]
+    model_vector = ["Mkt", "FF3", "FF5"]
     stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
