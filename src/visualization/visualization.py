@@ -126,38 +126,80 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     return None
 
 def explore_eret_we(eret_we, figfolder):
-    eret_we_agg = (eret_we
-            .groupby('yw')
-            .mean())
-    eret_pmo_agg = rp.pseudo_monthly(eret_we_agg) 
+    svar_qwe = create_svar()
+    eret_we_agg = preprocess_eret_we(eret_we, svar_qwe)
+    eret_qwe_agg = eret_qwe_agg.merge(svar_qwe, on='date', how='left')
+    eret_qwe_agg = rp.pseudo_monthly(eret_we_agg) 
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
-    tex_HKR_vs_mktrf(eret_pmo_agg, figfolder)
+    tex_HKR_vs_mktrf(eret_qwe_agg, figfolder)
     tex_summary_statistics(eret_we_agg, figfolder)
     return None
 
+def preprocess_eret_we(eret_we, svar_qwe):
+    eret_we_agg = (eret_we
+            .groupby('yw')
+            .mean())
+    eret_we_agg = eret_we_agg.reset_index()
+    eret_we_agg.yw = eret_we_agg.yw.astype(int)
+    eret_we_agg = eret_we_agg.merge(svar_qwe, on='yw', how='left')
+
+    def convert_yw_to_date(yw):
+        year = yw // 100
+        week = yw % 100
+        # Create a date corresponding to the first day of the year
+        date = pd.to_datetime(year.astype(str) + '0101', format='%Y%m%d')
+        # Find the first Sunday of the year for each date
+        first_sunday = date.apply(lambda x: x + pd.to_timedelta((6 - x.weekday()) % 7, unit='D'))
+        # Add the number of weeks to get the Sunday of the specified week
+        return first_sunday + pd.to_timedelta((week - 1) * 7, unit='D')
+
+    # Apply the function to the yw column
+    eret_we_agg['date'] = convert_yw_to_date(eret_we_agg['yw'])
+    return eret_we_agg
+
+def create_svar():
+    file_path = '/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/ff3fd.csv'
+    df = pd.read_csv(file_path, skiprows=1, header=None)
+
+# # Manually set the correct column names
+    df.columns = ['date', 'Mkt-RF', 'SMB', 'HML', 'RF']
+
+# # Convert the date column to datetime format
+    df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
+    # Convert date to year-week format:
+
+# # Calculate log returns for the Mkt-RF component
+    df['Mkt-RF'] = np.log(1 + df['Mkt-RF'] / 100)
+
+# # Resample the data by week and calculate the sum of squares of log returns for each week
+    # min_date = eret_qwe_agg['date'].min()
+    # myrange = df['date'] >= min_date - pd.DateOffset(weeks=1)
+    svar_qwe = df.resample('W', on='date')['Mkt-RF'].apply(lambda x: np.sum(x**2))
+
+    svar_qwe = svar_qwe.reset_index()
+    # Convert date to year-week format:
+    svar_qwe.columns = ['date', 'SVAR']
+    svar_qwe['yw'] = svar_qwe['date'].dt.strftime('%Y%U').astype(int)
+# Filter svar_qwe with date > 2006-07-23
+    return svar_qwe
+
 @announce_execution
-def tex_HKR_vs_mktrf(eret_pmo_agg, figfolder):
+def tex_HKR_vs_mktrf(eret_qwe_agg, figfolder):
     print("Now using pseudo-monthly returns")
-    summary = rp.HKR_vs_mktrf_pmo(eret_pmo_agg)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "SMB + HML + HKR", skip_crises=False)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "HKR", skip_crises=False)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "SMB + HML + HKR", skip_crises=True)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "HKR", skip_crises=True)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "SMB + HML + HKR", skip_crises=False)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "HKR", skip_crises=False)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "SMB + HML + HKR", skip_crises=True)
+    rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "HKR", skip_crises=True)
     print("Finished using pseudo-monthly returns!")
-    # Define the file path for the tex file
-    # Save as latex with a given label:
-    tex_content = summary.as_latex(label = "tab:HKR_vs_mktrf")
-    # Substitute substring "label{}" by "label{tab:HKR_vs_mktrf}":
-    tex_content = tex_content.replace("\\begin\{table\}", "\\begin\{table\}[H!]")
-    tex_content = tex_content.replace("caption\{\}", "caption\{HKR vs. Market Return Weeks Ahead: Summary Statistics\}")
-    # Remove the footnotes section from the LaTeX content
-    tex_content = tex_content.split("\\bigskip")[0]
-    
-    # Define the file path for the tex file
-    tex_file_path = figfolder + "HKR_vs_mktrf.tex"
-    
-    # Write the modified summary to the tex file
-    with open(tex_file_path, 'w') as tex_file:
-        tex_file.write(tex_content)
+
 
 @announce_execution
 def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
+    eret_we_agg = eret_we_agg.set_index('yw')
     plt.figure()
     factors = (eret_we_agg
               .loc[:, ['SMB', 'HKR']]
@@ -221,7 +263,7 @@ def tex_summary_statistics(eret_we_agg, figfolder):
     table = table[~table['Factor'].isin({'HKR_NSB', 'HKR_SB'})]
 
     with open(figfolder + filename + ".tex", 'w') as tex_file:
-            contents = table.to_latex(index = False, header = True, position = "[H!]", label = "tab:summary_statistics",
+            contents = table.to_latex(index = False, header = True, position = "H!", label = "tab:summary_statistics",
                 caption = "Summary Statistics of Factor Returns. This table presents key statistics for various asset pricing factors, including the market factor (Mkt.RF), size (SMB), value (HML), investment (CMA), profitability (RMW), and the high knowledge factor (HKR). Values are converted to monthly frequency.")
             # Substitute substring "label{}" by "label{tab:summary_statistics}":
             contents = contents.replace("\\begin\{table\}", "\\begin\{table\} \n \\centering")
@@ -232,7 +274,7 @@ def to_percentage(x):
 
 def save_table_dual(figfolder, table, filename):
     with open(figfolder + filename + ".tex", 'w') as tex_file:
-        tex_file.write(table.to_latex(index = False, label = f"tab:{filename}", header = True, position = "[H!]"))
+        tex_file.write(table.to_latex(index = False, label = f"tab:{filename}", header = True, position = "H!"))
 
     # Print as HTML as well:
     with open(figfolder + filename + ".html", 'w') as html_file:
@@ -573,6 +615,15 @@ def tex_compare_kk_measures(comparison_measures, figfolder):
     """
     # Convert DataFrame to LaTeX
     save_table_dual(figfolder, comparison_measures, "corr_measures")
+
+@announce_execution
+def calc_svar(stox, frequency = 'W'):
+    # Let statfunc be the sum of squared returns:
+    statfunc = lambda x: np.sum(x ** 2)
+    moment_df = stox.groupby(['PERMNO']).resample(frequency)['RET'].apply(statfunc)
+    moment_df = moment_df.reset_index()
+    svar_qwe = rp.to_quadriweekly(moment_df, 'RET')
+    return svar_qwe
 
 @announce_execution
 def plot_moment(stox, figfolder, moment_name, frequency = 'Y', hue_var = "ntile_kk", asset_weighted = False):
