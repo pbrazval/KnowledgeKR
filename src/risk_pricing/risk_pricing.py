@@ -13,6 +13,7 @@ from linearmodels.panel import generate_panel_data
 from statsmodels.regression.rolling import RollingOLS
 from statsmodels.iolib.summary2 import summary_col
 import risk_pricing as rp
+import re   
 
 def get_fiscal_year_mo(ym):
     year = ym // 100  # Extract the year part
@@ -561,19 +562,19 @@ def  famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
         # Extract coefficients for each window and create a DataFrame
         for idx, params in rres.params.iterrows():
             if case == "ff3":
-                results_list.append([idx, pf_name,  params['MktRF'], params['SMB'], params['HML'], params['HKR']])
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
             elif case == "ff5":
-                results_list.append([idx, pf_name,  params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
             elif case == "ff1":
-                results_list.append([idx, pf_name, params['MktRF'], params['HKR']])
+                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['HKR']])
 
     # Convert the list of results into a DataFrame
     if case == "ff3":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'MktRF', 'SMB', 'HML', 'HKR'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR'])
     elif case == "ff5":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname,  'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
     elif case == "ff1":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'MktRF', 'HKR'])
+        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'HKR'])
         
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
     # Added today: Jul 1st 2024
@@ -677,7 +678,7 @@ def HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, moment = 1, periods = [1, 3, 13, 2
 
     summary = summary_col(
         models,
-        model_names=model_names,
+        model_names=[rf"$q={period}$" for period in periods],
         stars=True,
         float_format='%0.4f',
         regressor_order=reg_order,
@@ -685,9 +686,10 @@ def HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, moment = 1, periods = [1, 3, 13, 2
     )
 
     tex_content = summary.as_latex(label = "tab:HKR_vs_mktrf")
+    tex_content = tex_content.replace(r"\$", "$")
     # Substitute substring "label{}" by "label{tab:HKR_vs_mktrf}":
-    tex_content = tex_content.replace("\\begin{table\}", "\\begin\{table\}H!")
-    tex_content = tex_content.replace("caption\{\}", "caption\{HKR vs. {var} Weeks Ahead: Summary Statistics\}")
+    tex_content = re.search(r'\\begin{tabular}.*?\\end{tabular}', tex_content, re.DOTALL).group()
+    #tex_content = tex_content.replace("caption\{\}", "caption\{HKR vs. {var} Weeks Ahead: Summary Statistics\}")
     # Remove the footnotes section from the LaTeX content
     tex_content = tex_content.split("\\bigskip")[0]
     

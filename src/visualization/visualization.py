@@ -1,7 +1,7 @@
 # Data manipulation and numerical operations
 import pandas as pd
 import numpy as np
-from scipy.stats import kurtosis
+from scipy.stats import kurtosis, ttest_1samp
 # Date and time operations
 from datetime import datetime
 
@@ -12,12 +12,9 @@ from plotnine import ggplot, aes, geom_tile, geom_text, scale_fill_gradient2, la
 import matplotlib.dates as mdates
 
 # Utilities and performance optimization
-import pyreadr
-import time
-import numba
-import concurrent.futures
 import risk_pricing as rp
 import os
+from .latex_utils import *
 
 def announce_execution(func):
     def wrapper(*args, **kwargs):
@@ -27,13 +24,14 @@ def announce_execution(func):
         return result
     return wrapper
 
+@announce_execution
 def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], **kwargs):
-    topic_dict = {"dicfullmc10thr10defnob40noa1_4t": {"topic_0": "kkrisk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"},
-                  "dicfullmc10thr10defnob40noa0_8_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
-                  "dicfullmc10thr10defnob5noa1_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
-                  "dicfullmc10thr10defnob5noa0_8_4t": {"topic_0": "topic_energy", "topic_1": "topic_tech", "topic_2": "topic_finl", "topic_3": "kkrisk"},
-                  "dicfullmc10thr10defnob40noa0_9_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "kkrisk"},
-                  "embeddings_km10_ipcs": {"kkrisk": "kkrisk"}}   
+    topic_dict = {"dicfullmc10thr10defnob40noa1_4t": {"topic_0": "KKR", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"},
+                  "dicfullmc10thr10defnob40noa0_8_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "KKR"},
+                  "dicfullmc10thr10defnob5noa1_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "KKR"},
+                  "dicfullmc10thr10defnob5noa0_8_4t": {"topic_0": "topic_energy", "topic_1": "topic_tech", "topic_2": "topic_finl", "topic_3": "KKR"},
+                  "dicfullmc10thr10defnob40noa0_9_4t": {"topic_0": "topic_0", "topic_1": "topic_1", "topic_2": "topic_2", "topic_3": "KKR"},
+                  "embeddings_km10_ipcs": {"KKR": "KKR"}}   
     
     if name == "dicfullmc10thr10defnob40noa0_8_4t":
         cuts = [0, 0.85, 0.90, 0.95, 1]
@@ -60,7 +58,7 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
 def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
     print("Labeling HDP topic map")
     if name == "dicfullmc10thr10defnob40noa0_8_hdp":
-        topic_map_unlabeled['kkrisk'] = topic_map_unlabeled['topic_1'] + topic_map_unlabeled['topic_9']  + topic_map_unlabeled['topic_22'] + topic_map_unlabeled['topic_32']
+        topic_map_unlabeled['KKR'] = topic_map_unlabeled['topic_1'] + topic_map_unlabeled['topic_9']  + topic_map_unlabeled['topic_22'] + topic_map_unlabeled['topic_32']
         # Delete topic_1
         topic_map_labeled = topic_map_unlabeled.drop(columns = ["topic_1"])
         # Delete topic_9,...
@@ -72,26 +70,14 @@ def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
                                         transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
         return topic_map_labeled
 
-
-def label_dicfullmc10thr10defnob40noa1_4t(topic_map_unlabeled):
-    k = 0
-    labels = ["topic_" + str(k), str(k)]
-    
-    topic_map_labeled = topic_map_unlabeled.copy()
-    
-    topic_map_labeled.rename(columns={"topic_0": "kkrisk", "topic_1": "topic_finl", "topic_2": "topic_sw", "topic_3": "topic_rawm"}, inplace=True)
-    
-    return topic_map_labeled, labels
-
-def personal_stargazer(mytable, textfolder, file_name, label, caption):
-    latex_output = (mytable.
-                to_latex(index=False, header=True, label = label, caption = caption, decimal = "."))
-    file_name = textfolder + file_name
-    with open(file_name, 'w') as f:
-        f.write(latex_output)
-    return None
 # Data Manipulation using Pandas
+@announce_execution
 def explore_topic_map(topic_map, figfolder, start_time, nt = 4):    
+
+    topic_map['kkpt_intensity'] = topic_map['K_int_Know'] / topic_map['at']
+    tex_calculate_correlation_matrix(figfolder, topic_map)
+
+    tex_descriptive_statistics(figfolder, topic_map)    
 
     fig_mean_tiy(topic_map, figfolder)
     
@@ -117,10 +103,71 @@ def explore_topic_map(topic_map, figfolder, start_time, nt = 4):
     print("Finished!")
     return None
 
+@announce_execution
+def tex_descriptive_statistics(figfolder, topic_map):
+    # Create subset of topic_map
+    topic_map_subset = topic_map[['topic_kk', 'Skill', 'xir_cumsum', 'K_int_Know', 'K_int', 'at', 'ppegt', 'kkpt_intensity']]
+    
+    # Rename columns
+    topic_map_subset.columns = ['KKR', 'Skill', 'Patent Intensity', 'Knowledge Cap. (PT)', 'Intangible Cap. (PT)', 'Total Assets', 'Gross PPE', 'Knowledge Cap. (PT) Intensity']
+    
+    # Reorder columns
+    topic_map_subset = topic_map_subset[['Total Assets', 'Gross PPE', 'Intangible Cap. (PT)', 'Knowledge Cap. (PT)', 'Knowledge Cap. (PT) Intensity', 'KKR', 'Skill', 'Patent Intensity']]
+    
+    # Calculate descriptive statistics
+    desc = topic_map_subset.describe()
+    
+    # Round to specified decimal places
+    desc = desc.round({
+        'Total Assets': 1,
+        'Gross Property, Plant and Equipment': 0,
+        'Intangible Capital (PT)': 0,
+        'Knowledge Capital (PT)': 0,
+        'Knowledge Capital (PT) Intensity': 3,
+        'KKR': 3,
+        'Skill': 3,
+        'Patent Intensity': 3
+    })
+    
+    # Function to remove trailing zeros
+    def remove_trailing_zeros(x):
+        return '{:g}'.format(float(x))
+    
+    # Apply the function to remove trailing zeros
+    desc_no_zeros = desc.applymap(remove_trailing_zeros)
+    
+    # Transpose the result
+    result = desc_no_zeros.T
+    # Rename columns:
+    result = result.rename(columns = {"count": "Count", "mean": "Mean", "std": "SD", "min": "Min", "25%": "25\\%", "50%": "50\\%", "75%": "75\\%", "max": "Max"})
+
+    save_table_dual(figfolder, result, "descriptive_statistics", row_names = True, tabular = True)
+    
+    return result
+
+@announce_execution
+def tex_calculate_correlation_matrix(figfolder, topic_map):
+    topic_map_subset = topic_map[['kkpt_intensity', 'xir_cumsum', 'topic_kk']]
+    topic_map_subset.columns = ['KK Int.', 'Pat.Int.', 'KKR']
+    corr = topic_map_subset.corr(method = 'spearman')
+    corr = corr.round(3)
+    mask = np.triu(np.ones_like(corr, dtype=bool))
+    
+    # Apply the mask to the correlation matrix
+    corr_lower = corr.where(~mask)
+    
+    # Print only 3 digits after the decimal point:
+    corr_lower = corr_lower.applymap(lambda x: f"{x:.3f}" if pd.notnull(x) else '')
+    # Delete the first row and the last column:
+    corr_lower = corr_lower.iloc[1:, :-1]
+    save_table_dual(figfolder, corr_lower, "correlation_measures", row_names=True, tabular = True)
+
+@announce_execution
 def explore_stoxwe(stoxwe, figfolder):
     plot_returns(stoxwe, figfolder)
     return None
 
+@announce_execution
 def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     plot_returns(stoxwe_with_pfs, figfolder)
     return None
@@ -128,11 +175,10 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
 def explore_eret_we(eret_we, figfolder):
     svar_qwe = create_svar()
     eret_we_agg = preprocess_eret_we(eret_we, svar_qwe)
-    eret_qwe_agg = eret_qwe_agg.merge(svar_qwe, on='date', how='left')
     eret_qwe_agg = rp.pseudo_monthly(eret_we_agg) 
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
     tex_HKR_vs_mktrf(eret_qwe_agg, figfolder)
-    tex_summary_statistics(eret_we_agg, figfolder)
+    tex_fmb_results_statistics(eret_we_agg, figfolder)
     return None
 
 def preprocess_eret_we(eret_we, svar_qwe):
@@ -222,7 +268,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     plt.close()
 
 @announce_execution
-def tex_summary_statistics(eret_we_agg, figfolder):
+def tex_fmb_results_statistics(eret_we_agg, figfolder):
     # Pick columns only in set {'MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'}:
     desired_columns = {'Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA', 'HKR_NSB', 'HKR_SB'}
 
@@ -263,26 +309,15 @@ def tex_summary_statistics(eret_we_agg, figfolder):
     table = table[~table['Factor'].isin({'HKR_NSB', 'HKR_SB'})]
 
     with open(figfolder + filename + ".tex", 'w') as tex_file:
-            contents = table.to_latex(index = False, header = True, position = "H!", label = "tab:summary_statistics",
-                caption = "Summary Statistics of Factor Returns. This table presents key statistics for various asset pricing factors, including the market factor (Mkt.RF), size (SMB), value (HML), investment (CMA), profitability (RMW), and the high knowledge factor (HKR). Values are converted to monthly frequency.")
-            # Substitute substring "label{}" by "label{tab:summary_statistics}":
-            contents = contents.replace("\\begin\{table\}", "\\begin\{table\} \n \\centering")
+            contents = table.to_latex(index = False)
             tex_file.write(contents)
 
 def to_percentage(x):
     return f"{x * 100:.2f}\\%"
 
-def save_table_dual(figfolder, table, filename):
-    with open(figfolder + filename + ".tex", 'w') as tex_file:
-        tex_file.write(table.to_latex(index = False, label = f"tab:{filename}", header = True, position = "H!"))
-
-    # Print as HTML as well:
-    with open(figfolder + filename + ".html", 'w') as html_file:
-        html_file.write(table.to_html())
-
 @announce_execution
 def explore_fmb(fmb_list, figfolder):
-    tex_summary(fmb_list, figfolder)
+    tex_fmb_results(fmb_list, figfolder)
 
 def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # Plot the Amazon stock prices
@@ -311,10 +346,10 @@ def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
 
 from stargazer.stargazer import Stargazer
 
-def tex_summary(fmb_list, figfolder):
+def tex_fmb_results(fmb_list, figfolder):
     stargazer = Stargazer(fmb_list)
     stargazer.significant_digits(5)
-    stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns. This table presents the results of Fama-MacBeth regressions using three model specifications.")
+    stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns")
     stargazer.covariate_order(['HKR', 'MktRF', 'SMB', 'HML', 'RMW', 'CMA', 'Intercept'])
     stargazer.show_degrees_of_freedom(False)
     stargazer.show_f_statistic = False
@@ -351,7 +386,7 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
         # Plot histogram on the respective subplot
         sns.histplot(data=data_filtered, x='topic_kk', bins=15, kde=False, ax=axes[i], stat='probability')
         axes[i].set_title(f'{value}', fontsize=18)
-        axes[i].set_xlabel('kkrisk')
+        axes[i].set_xlabel('KKR')
         axes[i].set_ylabel('Probability')
         axes[i].set_xlim(0.05, 0.45)  # Set x-axis limits for consistency
 
@@ -365,8 +400,8 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
 def fig_histogram_kk(topic_map, figfolder):
     plt.figure()
     sns.histplot(data=topic_map, x='topic_kk', bins=20, kde=False, stat='probability')  # Adjust bins as needed
-    plt.title('Histogram of kkrisk')
-    plt.xlabel('Values of kkrisk')
+    plt.title('Histogram of KKR')
+    plt.xlabel('Values of KKR')
     plt.ylabel('Probability')
     # Save the figure before showing it
     plt.savefig(figfolder + "hist_kk_agg.png", dpi=600)
@@ -386,7 +421,7 @@ def fig_heatmap_topicvsikpt(topic_map, figfolder, nt):
             geom_tile(aes(fill='count')) +  # Use geom_tile for heatmap squares
             geom_text(aes(label='round(count, 2)'), size=20) +  # Add text labels
             scale_fill_gradient2(low="white", high="red", mid="pink", midpoint=firms_by_ik['count'].mean()) +  # Gradient fill
-            labs(x="N-tiles of Intangible Capital Risk measured by kkrisk",
+            labs(x="N-tiles of Intangible Capital Risk measured by KKR",
                 y="N-tiles of Intangible Capital Intensity",
                 fill='Count') +  # Labels
             theme(legend_title=element_text(size=14),  # Adjust legend title font size
@@ -403,7 +438,10 @@ def fig_heatmap_topicvskkpt(topic_map, figfolder, nt):
     topic_map_positivekkpt = (topic_map
                               .dropna(subset = ["K_int_Know", "at", "K_int"])
                               .loc[(topic_map["K_int_Know"] > 0), :])
-    topic_map_positivekkpt['kkpt_ntile'] = topic_map_positivekkpt.groupby('year')["K_int_Know"].transform(lambda x: pd.qcut(x, nt, labels=False, duplicates='drop'))
+    # Define kkpt_intensity as the ratio of K_int_Know to at:
+    topic_map_positivekkpt['kkpt_intensity'] = topic_map_positivekkpt['K_int_Know'] / topic_map_positivekkpt['at'] 
+    # Define kkpt_ntile as the quantile of kkpt_intensity:
+    topic_map_positivekkpt['kkpt_ntile'] = topic_map_positivekkpt.groupby('year')["kkpt_intensity"].transform(lambda x: pd.qcut(x, nt, labels=False, duplicates='drop'))
     
     firms_by_kk = (topic_map_positivekkpt
                 .groupby(['ntile_kk', 'kkpt_ntile'])
@@ -414,7 +452,7 @@ def fig_heatmap_topicvskkpt(topic_map, figfolder, nt):
             geom_tile(aes(fill='count')) +  # Use geom_tile for heatmap squares
             geom_text(aes(label='round(count, 2)'), size=20) +  # Add text labels
             scale_fill_gradient2(low="white", high="red", mid="pink", midpoint=firms_by_kk['count'].mean()) +  # Gradient fill
-            labs(x="N-tiles of Knowledge Capital Risk measured by kkrisk",
+            labs(x="N-tiles of Knowledge Capital Risk measured by KKR",
                 y="N-tiles of Knowledge Capital Intensity",
                 fill='Count') +  # Labels
             theme(legend_title=element_text(size=14),  # Adjust legend title font size
@@ -798,3 +836,98 @@ def plot_returns(stoxwe_with_pfs, figfolder):
     plt.clf()
 
     return None    
+
+@announce_execution
+def explore_betas(df_betas, quantiles, figfolder):
+    # Set index names
+    pf_type = df_betas.head().index.names[0]
+    df_betas.index.names = ['pfname', 'yw']
+
+    # Calculate mean and standard deviation for each pfname
+    mean_df = df_betas.groupby('pfname').mean()
+    def compute_t_stat(group):
+        t_stats = group.apply(lambda x: ttest_1samp(x, 0).statistic)
+        return t_stats
+
+    # Calculate t-statistics for each pfname
+    t_stat_df = df_betas.groupby('pfname').apply(compute_t_stat)
+
+    # Merge mean and t-statistics dataframes
+    betas_exh = mean_df.join(t_stat_df, lsuffix='_mean', rsuffix='_tstat')
+    
+    # Keep only the columns related to HKR and eretw
+    columns_to_keep = [col for col in betas_exh.columns if 'HKR' in col or 'eretw' in col or "alpha" in col]
+    filtered_df = betas_exh[columns_to_keep]
+    filtered_df.index.names = ['pfname']
+    
+    if quantiles == 10:
+        to_keep = [0, 5, 9]
+    elif quantiles == 5:
+        to_keep = [0, 2, 4]
+    elif quantiles == 4:
+        to_keep = [0, 1, 2, 3]
+    elif quantiles == 3:
+        to_keep = [0, 1, 2]
+    else:
+        raise ValueError("Invalid quantiles. Choose 10, 5, 4, or 3.")
+    to_keep = list(map(str, to_keep))
+        
+    # Convert the index to a DataFrame to manipulate it
+    index_df = filtered_df.index.to_frame(index=False)
+    
+    # Add leading zeros to pfname
+    index_df['pfname'] = index_df['pfname'].astype(str).str.zfill(3)
+    
+    # Apply the function to create long_pfname
+    index_df['long_pfname'] = index_df.apply(lambda row: create_long_pfname(row['pfname'], pf_type), axis=1)    
+    # Filter index_df based on specific conditions
+    filtered_index_df = index_df[index_df['pfname'].str[0].isin(to_keep)]
+    
+    # Reset index for merging
+    filtered_index_df = filtered_index_df.set_index('pfname')
+    filtered_index_df = filtered_index_df.reset_index()
+    filtered_df = filtered_df.reset_index()
+    
+    # Strip leading zeros for merging
+    filtered_df['pfname'] = filtered_df['pfname'].astype(str).str.lstrip('0')
+    filtered_index_df['pfname'] = filtered_index_df['pfname'].astype(str).str.lstrip('0')
+    
+    # Merge the dataframes
+    betas_exh = pd.merge(filtered_df, filtered_index_df, on='pfname')
+    
+    # Set the new index and drop the redundant column
+    betas_exh = betas_exh.drop(columns=['pfname'])
+    betas_exh.rename(columns={'long_pfname': 'PF', "HKR_mean": "beta_HKR", "eretw_mean": "RET", "eretw_tstat": "t(RET)", "alpha_mean": "alpha", "alpha_tstat": "t(alpha)", "HKR_tstat": "t(beta_HKR)"}, inplace=True)
+    # Get only columns ['PF', 'alpha', 't(alpha)', 'beta_HKR', 't(beta_HKR)', 'RET', 't(RET)']:
+    betas_exh = betas_exh[['PF', 'alpha', 't(alpha)', 'beta_HKR', 't(beta_HKR)', 'RET']]
+    # # Convert alpha and RET to percentage, round to 2 decimal places, and add percentage sign:
+    betas_exh['alpha'] = (betas_exh['alpha'] * 100).round(2).astype(str) + r'\%'
+    betas_exh['RET'] = (betas_exh['RET'] * 100).round(2).astype(str) + r'\%'
+    # Round the other columns to 3 decimal places. List them nominally:
+    betas_exh['t(alpha)'] = betas_exh['t(alpha)'].round(3).apply(lambda x: f"{x:.3f}")
+    betas_exh['t(beta_HKR)'] = betas_exh['t(beta_HKR)'].round(3).apply(lambda x: f"{x:.3f}")
+    #betas_exh['t(RET)'] = betas_exh['t(RET)'].round(3).apply(lambda x: f"{x:.3f}")
+    betas_exh['beta_HKR'] = betas_exh['beta_HKR'].round(3).apply(lambda x: f"{x:.3f}")
+
+
+    betas_exh.columns = ['PF',r'$\alpha$',r't($\alpha$)',r'$\beta_\text{HKR}$',r't($\beta_\text{HKR}$)','RET']
+    filename = "betas"
+    with open(figfolder + filename + ".html", 'w') as html_file:
+            html_file.write(betas_exh.to_html())
+
+    with open(figfolder + filename + ".tex", 'w') as tex_file:
+            contents = betas_exh.to_latex(escape = False, index = False)
+            tex_file.write(contents)
+    
+    return None
+
+def create_long_pfname(pfname, pf_type):
+    if len(pfname) != 3:
+        return pfname
+    elif pf_type == 'pfkki3me3mb':
+        first_digit, second_digit, third_digit = pfname[0], pfname[1], pfname[2]
+        second_char = 'S' if second_digit == '1' else ('M' if second_digit in '2' else 'B')
+        third_char = 'L' if third_digit == '1' else ('M' if third_digit == '2' else ('H' if third_digit == '3' else ''))
+        return f"{second_char}/{third_char}/{first_digit}"
+    else:
+        return pfname
