@@ -41,17 +41,20 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
     if name[-3:] == "hdp":
         topic_map_labeled = topic_map_unlabeled.copy()
         topic_map_labeled = label_topic_map_hdp(topic_map_labeled, name, **kwargs)
+        return topic_map_labeled
 
     topic_map_labeled = topic_map_unlabeled.copy()
     if name in topic_dict.keys():
         topic_map_labeled.rename(columns = topic_dict[name], inplace=True)  
     # If name starts with "emb":
-    
-    topic_map_labeled['ntile_kk'] = (topic_map_labeled.
-        groupby('year')['topic_kk'].
-        transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
-    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'] + 1
-    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'].astype(int)
+    if name[:3] == "emb":
+        # Rename column "topic_kk" to "KKR":
+        topic_map_labeled.rename(columns = {"topic_kk": "KKR"}, inplace=True)
+        topic_map_labeled['ntile_kk'] = (topic_map_labeled.
+            groupby('year')['KKR'].
+            transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
+        topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'] + 1
+        topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'].astype(int)
 
     return topic_map_labeled
 
@@ -66,7 +69,7 @@ def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
 
         cuts = [0, 0.85, 0.90, 0.95, 1]
         topic_map_labeled['ntile_kk'] = (topic_map_labeled.
-                                        groupby('year')['topic_kk'].
+                                        groupby('year')['KKR'].
                                         transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
         return topic_map_labeled
 
@@ -106,7 +109,7 @@ def explore_topic_map(topic_map, figfolder, start_time, nt = 4):
 @announce_execution
 def tex_descriptive_statistics(figfolder, topic_map):
     # Create subset of topic_map
-    topic_map_subset = topic_map[['topic_kk', 'Skill', 'xir_cumsum', 'K_int_Know', 'K_int', 'at', 'ppegt', 'kkpt_intensity']]
+    topic_map_subset = topic_map[['KKR', 'Skill', 'xir_cumsum', 'K_int_Know', 'K_int', 'at', 'ppegt', 'kkpt_intensity']]
     
     # Rename columns
     topic_map_subset.columns = ['KKR', 'Skill', 'Patent Intensity', 'Knowledge Cap. (PT)', 'Intangible Cap. (PT)', 'Total Assets', 'Gross PPE', 'Knowledge Cap. (PT) Intensity']
@@ -147,8 +150,8 @@ def tex_descriptive_statistics(figfolder, topic_map):
 
 @announce_execution
 def tex_calculate_correlation_matrix(figfolder, topic_map):
-    topic_map_subset = topic_map[['kkpt_intensity', 'xir_cumsum', 'topic_kk']]
-    topic_map_subset.columns = ['KK Int.', 'Pat.Int.', 'KKR']
+    topic_map_subset = topic_map[['kkpt_intensity', 'xir_cumsum', 'Skill', 'KKR']]
+    topic_map_subset.columns = ['KK Int.', 'Pat.Int.', 'Skill', 'KKR']
     corr = topic_map_subset.corr(method = 'spearman')
     corr = corr.round(3)
     mask = np.triu(np.ones_like(corr, dtype=bool))
@@ -347,6 +350,7 @@ def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
 from stargazer.stargazer import Stargazer
 
 def tex_fmb_results(fmb_list, figfolder):
+
     stargazer = Stargazer(fmb_list)
     stargazer.significant_digits(5)
     stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns")
@@ -355,6 +359,7 @@ def tex_fmb_results(fmb_list, figfolder):
     stargazer.show_f_statistic = False
     stargazer.show_residual_std_err = False
     stargazer.table_label = "tab:fmb_results"
+    # stargazer.show_t_statistic = True 
     # stargazer.show_footer = False
     stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
@@ -378,17 +383,21 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
     # Set up the figure size and the number of subplots (3 rows of 4 histograms each)
     fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(20, 15))
     axes = axes.flatten()  # Flatten the 2D array of axes to 1D for easier iteration
+    # Find the 1st percentiles of KKR:
+    kkr_1 = topic_map['KKR'].quantile(0.01)
+    # Find the 99th percentile of KKR:
+    kkr_99 = topic_map['KKR'].quantile(0.99)
 
     for i, value in enumerate(unique_values):
         # Filter data for each category of 'ind12'
         data_filtered = topic_map[topic_map['ind12'] == value]
         
         # Plot histogram on the respective subplot
-        sns.histplot(data=data_filtered, x='topic_kk', bins=15, kde=False, ax=axes[i], stat='probability')
+        sns.histplot(data=data_filtered, x='KKR', bins=15, kde=False, ax=axes[i], stat='probability')
         axes[i].set_title(f'{value}', fontsize=18)
         axes[i].set_xlabel('KKR')
         axes[i].set_ylabel('Probability')
-        axes[i].set_xlim(0.05, 0.45)  # Set x-axis limits for consistency
+        axes[i].set_xlim(kkr_1, kkr_99)  # Set x-axis limits for consistency
 
     
     plt.tight_layout()
@@ -399,7 +408,7 @@ def fig_histogram_kk_by_ind12(topic_map, figfolder):
 @announce_execution
 def fig_histogram_kk(topic_map, figfolder):
     plt.figure()
-    sns.histplot(data=topic_map, x='topic_kk', bins=20, kde=False, stat='probability')  # Adjust bins as needed
+    sns.histplot(data=topic_map, x='KKR', bins=20, kde=False, stat='probability')  # Adjust bins as needed
     plt.title('Histogram of KKR')
     plt.xlabel('Values of KKR')
     plt.ylabel('Probability')
@@ -467,8 +476,8 @@ def fig_heatmap_topicvskkpt(topic_map, figfolder, nt):
 @announce_execution
 def df_patent_correlations(topic_map):
     patentcor = (topic_map.
-                filter([col for col in topic_map.columns if col.startswith("topic")]+["xir_cumsum"]))
-    patent_correlations = patentcor.corr(method = "spearman").loc["xir_cumsum", [col for col in patentcor.columns if col.startswith("topic")]]
+                filter([col for col in topic_map.columns if col.startswith("topic")]+["xir_cumsum", "KKR"]))
+    patent_correlations = patentcor.corr(method = "spearman").loc["xir_cumsum", [col for col in patentcor.columns if (col.startswith("topic") or col == "KKR")]]
     return patent_correlations
 
 @announce_execution
@@ -476,12 +485,14 @@ def df_skill_correlations(topic_map):
     skillcor = (topic_map.
                 filter([col for col in topic_map.columns if col.startswith("topic")]+["Skill"]))
     # Create an array with the correlation of each column that starts with "topic" with column "Skill":
-    skill_correlations = skillcor.corr(method = "spearman").loc["Skill", [col for col in skillcor.columns if col.startswith("topic")]]
+    skill_correlations = skillcor.corr(method = "spearman").loc["Skill", [col for col in skillcor.columns if (col.startswith("topic") or col == "KKR")]]
     return skill_correlations
 
 @announce_execution
 def fig_share_dominant_kk_by_ind(topic_map, figfolder):
     maxkk = max(topic_map["ntile_kk"])
+    ntile_name = get_quantile_term(maxkk)
+
     firms_by_ind = (topic_map
                     .loc[topic_map["ntile_kk"]==maxkk]
                     .groupby(["year", "ind12"])
@@ -491,9 +502,9 @@ def fig_share_dominant_kk_by_ind(topic_map, figfolder):
     # Convert year and ind12 from index to columns:
     
     stackedplot_n = sns.barplot(data=firms_by_ind, x='year', y='count', hue='ind12', dodge=False)
-    stackedplot_n.set_ylabel('Share of all dominant-KK firms')
+    stackedplot_n.set_ylabel(f'Firm count in upper {ntile_name}')
     stackedplot_n.set_xlabel('Year')
-    stackedplot_n.set_title('Share of all dominant-KK firms by Industry')
+    stackedplot_n.set_title(f'Firm count by Industry in upper {ntile_name}')
     stackedplot_n.legend(title='Industry', bbox_to_anchor=(1, 1))
     plt.xticks(rotation=45)
 
@@ -504,9 +515,9 @@ def fig_share_dominant_kk_by_ind(topic_map, figfolder):
 
     # Do the same for totalat:
     stackedplot_at = sns.barplot(data=firms_by_ind, x='year', y='totalat', hue='ind12', dodge=False)
-    stackedplot_at.set_ylabel('Total assets of all dominant-KK firms')
+    stackedplot_at.set_ylabel(f'Total assets of all firms in upper {ntile_name}')
     stackedplot_at.set_xlabel('Year')
-    stackedplot_at.set_title('Total assets of all dominant-KK firms by Industry')
+    stackedplot_at.set_title(f'Total assets of all firms by Industry in upper {ntile_name}')
     stackedplot_at.legend(title='Industry', bbox_to_anchor=(1, 1))
     plt.xticks(rotation=45)
 
@@ -519,13 +530,13 @@ def fig_share_dominant_kk_by_ind(topic_map, figfolder):
 def tex_sample_topic_loadings(topic_map, figfolder):
     np.random.seed(139)
     sample_topics = (topic_map.
-                    filter([col for col in topic_map.columns if col.startswith("topic")]+["conm", "year"]).
+                    filter([col for col in topic_map.columns if col.startswith("topic")]+["conm", "KKR", "year"]).
                     sample(n = 10).
                     sort_values(by = "conm").
                     rename(columns = {"conm": "Company_Name"}).
-                    apply(lambda x: round(x, 3) if x.name.startswith('topic') else x, axis = 0))
+                    apply(lambda x: round(x, 3) if (x.name.startswith('topic') or x.name == 'KKR') else x, axis = 0))
 
-    personal_stargazer(sample_topics, figfolder, "sample_topics", "tab:sample_topics", "Sample of Topic Loadings")
+    personal_stargazer(sample_topics, figfolder, "sample_topics.tex", "tab:sample_topics", "Sample of Topic Loadings")
 
 @announce_execution
 def tex_average_topic_loadings_by_high_tech(topic_map, figfolder, nt):
@@ -533,11 +544,11 @@ def tex_average_topic_loadings_by_high_tech(topic_map, figfolder, nt):
     bytech = topic_map.dropna(subset = "hi_tech")
             
     bytech = (bytech.
-            filter([col for col in bytech.columns if col.startswith("topic")]+["hi_tech"]).
+            filter([col for col in bytech.columns if col.startswith("topic")]+["hi_tech", "KKR"]).
             groupby("hi_tech").
-            agg(lambda x: round(x.mean(), 3) if x.name.startswith('topic') else x))
+            agg(lambda x: round(x.mean(), 3) if (x.name.startswith('topic') or x.name == 'KKR') else x))
 
-    personal_stargazer(bytech, figfolder, "bytech", "tab:bytech", "Average Topic Loadings by High Tech")
+    personal_stargazer(bytech, figfolder, "bytech.tex", "tab:bytech", "Average Topic Loadings by High Tech")
     return None
 
 @announce_execution
@@ -575,7 +586,7 @@ def amazon_graph(amazon_nov01_short, figfolder):
 @announce_execution
 def fig_mean_tiy(df, figfolder):
     # Select columns 'year' and those starting with 'topic_'
-    df_filtered = df.filter(regex='^year|topic_.*')
+    df_filtered = df.filter(regex='^year|topic_.*|KKR')
     
     # Calculate the average topic intensity for each year
     avg_df = df_filtered.groupby('year').mean().reset_index()

@@ -71,7 +71,7 @@ def attribute_portfolios_mo(stoxmo):
             ))
             .assign(pfkk3me3mb=lambda x: 100*x['ntile_kk'] + 10*x['me_3tile'] + x['mb_3tile'])
             .groupby(['me_3tile', 'mb_3tile'], group_keys=False)
-            .apply(lambda x: x.assign(kkr_ntile_inner=pd.qcut(x['topic_kk'], [0, 0.8, 0.9, 0.95,  1], duplicates = 'drop', labels=False) + 1))
+            .apply(lambda x: x.assign(kkr_ntile_inner=pd.qcut(x['KKR'], [0, 0.8, 0.9, 0.95,  1], duplicates = 'drop', labels=False) + 1))
             .assign(pfkki3me3mb=lambda x: 100*x['kkr_ntile_inner'] + 10*x['me_3tile'] + x['mb_3tile'])
             .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
             .loc[:, ['fiscalyear', 'gvkey', 'pf2me3mb', 'pf5me5mb', 'pfkk3me3mb', 'pfkki3me3mb']]
@@ -106,7 +106,7 @@ def create_eret_mo_panel_ff5(stoxmo_orig, cequity_mapper, topic_map, ff5fm, pfn)
         return np.nansum(group['eretm'] * weights) / np.sum(weights)
     
     HKR_ret = (stoxmo_with_pfs
-                  .dropna(subset=['topic_kk'])
+                  .dropna(subset=['KKR'])
                   .groupby(['ym', 'ntile_kk'])
                   .apply(calc_returns)
                   .unstack(level='ntile_kk')
@@ -155,7 +155,7 @@ def create_eret_we_panel_ff5(stoxwe_orig, cequity_mapper, topic_map, pfn, ff5fw)
     def calc_HKR_ret(group):
         return (group['eretw'] * group['me']).sum() / group['me'].sum()
 
-    HKR_ret = stoxwe_with_pfs.dropna(subset=['topic_kk']).groupby(['yw', 'ntile_kk']).apply(calc_HKR_ret).unstack().reset_index()
+    HKR_ret = stoxwe_with_pfs.dropna(subset=['KKR']).groupby(['yw', 'ntile_kk']).apply(calc_HKR_ret).unstack().reset_index()
     HKR_ret['HKR'] = HKR_ret[4] - HKR_ret[1]
     HKR_ret = HKR_ret[['yw', 'HKR']]
 
@@ -206,7 +206,7 @@ def attribute_portfolios_we(stoxwe):
         pfs[f'{col}_5tile'] = pd.qcut(pfs[col], 5, labels=False) + 1
     
     pfs['pf5me5mb'] = 10 * pfs['me_5tile'] + pfs['mb_5tile']
-    # Assuming ntile_kk and topic_kk need to be defined or calculated before this step
+    # Assuming ntile_kk and KKR need to be defined or calculated before this step
     # This example does not implement these due to missing context
 
     # Joining back to original DataFrame
@@ -434,7 +434,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .assign(pfkk3me3mb = lambda x: 100 * x['ntile_kk'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
                 .groupby(['y', 'me_3tile', 'mb_3tile'])
-                .apply(lambda df: df.assign(kkr_ntile_inner=pd.qcut(df['topic_kk'], kki_cuts, labels=False, duplicates='raise')))
+                .apply(lambda df: df.assign(kkr_ntile_inner=pd.qcut(df['KKR'], kki_cuts, labels=False, duplicates='raise')))
                 .reset_index(drop=True)
                 .assign(pfkki3me3mb=lambda x: 100 * x['kkr_ntile_inner'] + 10 * x['me_3tile'] + x['mb_3tile'])
                 .reset_index(drop=True)
@@ -493,7 +493,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
     max_kknt = max(stoxwe_add['ntile_kk'])
     min_kknt = min(stoxwe_add['ntile_kk'])
     
-    HKR_NSB_ret = (stoxwe_add.dropna(subset=['topic_kk'])
+    HKR_NSB_ret = (stoxwe_add.dropna(subset=['KKR'])
                 .groupby(['yw', 'ntile_kk'])
                 .apply(lambda df: pd.Series({
                     'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
@@ -505,8 +505,8 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ff3fw, pfn, 
                 .reset_index())
     
     HKR_ret = (stoxwe_add
-            .loc[:, ['yw', 'ntile_kk', 'me_group', 'topic_kk', 'eretw', 'me']]
-            .dropna(subset=['topic_kk'])
+            .loc[:, ['yw', 'ntile_kk', 'me_group', 'KKR', 'eretw', 'me']]
+            .dropna(subset=['KKR'])
             .groupby(['yw', 'ntile_kk', 'me_group'])
             .apply(lambda df: pd.Series({
                 'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
@@ -581,6 +581,7 @@ def  famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
     results_df.dropna(inplace=True) 
     df_betas = results_df.set_index([pfname, 'yw'], inplace=False)
     print("New kernel")
+    # Multiply all the columns (if present) by 100 to get the percentage values, if they belong to the list: 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'
     fmb = FamaMacBeth.from_formula(formula, df_betas).fit(cov_type='kernel')
     return fmb, df_betas
 

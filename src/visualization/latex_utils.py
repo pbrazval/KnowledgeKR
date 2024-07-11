@@ -20,3 +20,17 @@ def save_table_dual(figfolder, table, filename, tabular = False, row_names = Fal
     # Print as HTML as well:
     with open(figfolder + filename + ".html", 'w') as html_file:
         html_file.write(table.to_html())
+
+def get_quantile_term(maxkk):
+    if maxkk == 3:
+        return "tercile"
+    elif maxkk == 4:
+        return "quartile"
+    elif maxkk == 5:
+        return "quintile"
+    elif maxkk == 10:
+        return "decile"
+    elif maxkk == 100:
+        return "percentile"
+    else:
+        return f"{maxkk}-quantile"
