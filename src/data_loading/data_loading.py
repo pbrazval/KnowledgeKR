@@ -85,23 +85,17 @@ def load_dataframes(modelname,start_time, clean_again=False):
         # Save all dataframes above to a pkl in sister folder "data":
         
         linkt = clean_linkt_orig(linkt_orig, start_time)
-        print("Tempo de execução:", time.time() - start_time)
         
         patent_ik = clean_patent_ik_orig(patent_ik_orig, linkt)
-        print("Tempo de execução:", time.time() - start_time)
         
         ff3fm, ff5fm, ff3fw, ff5fw = cleanff_all(ff3fm_orig, ff5fm_orig, ff3fw_orig, ff5fw_orig)
-        print("Tempo de execução:", time.time() - start_time)
         
         skilldata = clean_skilldata(skilldata_orig)
-        print("Tempo de execução:", time.time() - start_time)
 
         compustat_pt = clean_compustat(comp_funda2, peterstaylor)
-        print("Tempo de execução:", time.time() - start_time)
         
         topic_map_orig = pd.read_csv(f"~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_2006_2022.csv")
         topic_map_unlabeled = create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, compustat_pt)
-        print("Tempo de execução:", time.time() - start_time)
 
         
         variable_names = ['amazon_nov01_short', 'ff3fw', 'ff5fw',
@@ -139,7 +133,6 @@ def load_dataframes(modelname,start_time, clean_again=False):
         #peterstaylor = pd.read_pickle(f"../data/peterstaylor.pkl")
         #skilldata_orig = pd.read_pickle(f"../data/skilldata_orig.pkl")
         stoxwe_orig = pd.read_pickle(f"../data/stoxwe_post2005short.pkl")
-        print("Tempo de execução depois de carregar os dados:", time.time() - start_time)
 
     return amazon_nov01_short, cequity_mapper, ff3fw, ff5fw, ff3fm, ff5fm, topic_map_unlabeled, comparison_measures, stoxmo_orig, stoxda_orig, stoxwe_orig
 

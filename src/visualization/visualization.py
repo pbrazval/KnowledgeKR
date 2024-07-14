@@ -50,11 +50,12 @@ def label_topic_map(topic_map_unlabeled, name, cuts = [0, 0.2, 0.4, 0.6, 0.8, 1]
     if name[:3] == "emb":
         # Rename column "topic_kk" to "KKR":
         topic_map_labeled.rename(columns = {"topic_kk": "KKR"}, inplace=True)
-        topic_map_labeled['ntile_kk'] = (topic_map_labeled.
-            groupby('year')['KKR'].
-            transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
-        topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'] + 1
-        topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'].astype(int)
+
+    topic_map_labeled['ntile_kk'] = (topic_map_labeled.
+        groupby('year')['KKR'].
+        transform(lambda x: pd.qcut(x, cuts, labels=False, duplicates='raise')))  
+    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'] + 1
+    topic_map_labeled['ntile_kk'] = topic_map_labeled['ntile_kk'].astype(int)
 
     return topic_map_labeled
 
@@ -75,7 +76,7 @@ def label_topic_map_hdp(topic_map_unlabeled, name, **kwargs):
 
 # Data Manipulation using Pandas
 @announce_execution
-def explore_topic_map(topic_map, figfolder, start_time, nt = 4):    
+def explore_topic_map(topic_map, figfolder, nt = 4):    
 
     topic_map['kkpt_intensity'] = topic_map['K_int_Know'] / topic_map['at']
     tex_calculate_correlation_matrix(figfolder, topic_map)
@@ -97,7 +98,6 @@ def explore_topic_map(topic_map, figfolder, start_time, nt = 4):
     fig_heatmap_topicvskkpt(topic_map, figfolder, nt)
 
     fig_heatmap_topicvsikpt(topic_map, figfolder, nt)
-    #print("running time:", time.time() - start_time)
 
     fig_histogram_kk(topic_map, figfolder)
 
@@ -175,24 +175,63 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     plot_returns(stoxwe_with_pfs, figfolder)
     return None
 
-def explore_eret_we(eret_we, figfolder):
+def explore_eret_we(eret_we5, figfolder):
     svar_qwe = create_svar()
-    eret_we_agg = preprocess_eret_we(eret_we, svar_qwe)
+    eret_we_agg = preprocess_eret_we(eret_we5)
+    eret_we_agg = eret_we_agg.merge(svar_qwe, on='yw', how='left')
     eret_qwe_agg = rp.pseudo_monthly(eret_we_agg) 
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
     tex_HKR_vs_mktrf(eret_qwe_agg, figfolder)
     tex_fmb_results_statistics(eret_we_agg, figfolder)
+    tex_gmm_results(eret_we5, None, figfolder)
     return None
 
-def preprocess_eret_we(eret_we, svar_qwe):
+def tex_gmm_results(eret_we3, eret_we5, figfolder, case = 3):
+    summary1 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'HKR'], formula = "HKR + Mkt.RF")
+    summary3 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "HKR + Mkt.RF + SMB + HML")
+    if case == 5:
+        summary5 = rp.gmm(eret_we5, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'], formula = "HKR + Mkt.RF + SMB + HML + RMW + CMA")
+        covariate_order = ['HKR', 'MktRF', 'SMB', 'HML', 'RMW', 'CMA', 'Intercept']
+        gmmlist = [summary1, summary3, summary5]
+        model_vector = ["Mkt", "FF3", "FF5"]
+    else:
+        covariate_order = ['HKR', 'MktRF', 'SMB', 'HML', 'Intercept']
+        gmmlist = [summary1, summary3]
+        model_vector = ["Mkt", "FF3"]    
+    export_gmm_results(figfolder, covariate_order, gmmlist, model_vector)
+
+def export_gmm_results(figfolder, covariate_order, gmmlist, model_vector):
+    stargazer = Stargazer(gmmlist)
+    stargazer.significant_digits(5)
+    stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns")
+    stargazer.covariate_order(covariate_order)
+    stargazer.show_degrees_of_freedom(False)
+    stargazer.show_f_statistic = False
+    stargazer.show_residual_std_err = False
+    stargazer.table_label = "tab:fmb_results"
+    stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
+    stargazer.custom_columns(model_vector)
+    result = stargazer.render_latex()
+    # Save to the right place:
+    with open(os.path.join(figfolder, "fmb_results.tex"), "w") as text_file:
+        text_file.write(result)
+
+    result = stargazer.render_html()
+    file_path = os.path.join(figfolder, "fmb_results.html")
+    with open(file_path, "w") as text_file:
+        text_file.write(result)
+
+def preprocess_eret_we(eret_we):
     eret_we_agg = (eret_we
             .groupby('yw')
             .mean())
     eret_we_agg = eret_we_agg.reset_index()
     eret_we_agg.yw = eret_we_agg.yw.astype(int)
-    eret_we_agg = eret_we_agg.merge(svar_qwe, on='yw', how='left')
+    # Apply the function to the yw column
+    # eret_we_agg['date'] = convert_yw_to_date(eret_we_agg['yw'])
+    return eret_we_agg
 
-    def convert_yw_to_date(yw):
+def convert_yw_to_date(yw):
         year = yw // 100
         week = yw % 100
         # Create a date corresponding to the first day of the year
@@ -201,10 +240,6 @@ def preprocess_eret_we(eret_we, svar_qwe):
         first_sunday = date.apply(lambda x: x + pd.to_timedelta((6 - x.weekday()) % 7, unit='D'))
         # Add the number of weeks to get the Sunday of the specified week
         return first_sunday + pd.to_timedelta((week - 1) * 7, unit='D')
-
-    # Apply the function to the yw column
-    eret_we_agg['date'] = convert_yw_to_date(eret_we_agg['yw'])
-    return eret_we_agg
 
 def create_svar():
     file_path = '/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/ff3fd.csv'
@@ -248,22 +283,34 @@ def tex_HKR_vs_mktrf(eret_qwe_agg, figfolder):
 
 @announce_execution
 def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
+# Example function to get U.S. recessions data
+    def get_us_recessions():
+        return [
+            (datetime(2007, 12, 1), datetime(2009, 6, 30)),
+            (datetime(2020, 2, 1), datetime(2020, 4, 30))
+        ]
+    
     eret_we_agg = eret_we_agg.set_index('yw')
     plt.figure()
-    factors = (eret_we_agg
-              .loc[:, ['SMB', 'HKR']]
-             )
+    factors = (eret_we_agg.loc[:, ['SMB', 'HKR']])
     factors = factors + 1
     factors = factors.cumprod()
     h1b_date = pd.to_datetime("20200301", errors="coerce", format="%Y%m%d")
     year_week = h1b_date.strftime('%Y%U')
     factors = factors.mul(100 / factors.loc[int(year_week)])
-    factors.index  = factors.index // 100 + (factors.index % 100) / 53
-    # Include a vertical line at 2020
-    factors.loc[2015:2021].plot()
+    factors.index = factors.index // 100 + (factors.index % 100) / 53
+
+    # Plot factors
+    factors.loc[2006:2021].plot()
     plt.axvline(2020 + 1/6, color='r', linestyle='--')
-    # Include a blue vertical line at the date of the H1B suspension: 
-    # plt.axvline(2020 + 26/53, color='b', linestyle='--')
+
+    # Include recessions shading
+    recessions = get_us_recessions()
+    for start, end in recessions:
+        plt.axvspan(start.year + start.timetuple().tm_yday / 365,
+                    end.year + end.timetuple().tm_yday / 365,
+                    color='gray', alpha=0.5)
+
     plt.xlabel("Year")
     plt.ylabel("Cumulative return (Normalized to 100 at March 1st 2020)")
     plt.title("Cumulative return of SMB and HKR factors")
@@ -347,7 +394,7 @@ def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
         stox.set_index('date', inplace=True)
         return stox, topic_map
 
-from stargazer.stargazer import Stargazer
+from stargazer_c.stargazer import Stargazer
 
 def tex_fmb_results(fmb_list, figfolder):
 
@@ -540,7 +587,6 @@ def tex_sample_topic_loadings(topic_map, figfolder):
 
 @announce_execution
 def tex_average_topic_loadings_by_high_tech(topic_map, figfolder, nt):
-
     bytech = topic_map.dropna(subset = "hi_tech")
             
     bytech = (bytech.
@@ -942,3 +988,13 @@ def create_long_pfname(pfname, pf_type):
         return f"{second_char}/{third_char}/{first_digit}"
     else:
         return pfname
+    
+def setup(quantiles, modelname, pfname, suffix = "_HKR_SB"):
+    base_path = "/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/text/"
+    dir_path = os.path.join(base_path, f"{modelname}_{quantiles}tiles_{pfname}{suffix}")
+    os.makedirs(dir_path, exist_ok=True)
+    figfolder = os.path.join(dir_path, "")
+    add_innerkk_pf = not modelname.startswith("dicfull")
+    cuts = np.linspace(0, 1, quantiles+1).tolist()
+    print(f"Running model {modelname} with {quantiles} quantiles and {pfname} portfolio")
+    return figfolder, add_innerkk_pf, cuts
