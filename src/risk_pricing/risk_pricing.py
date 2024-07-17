@@ -188,22 +188,26 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
             .dropna()
             .reset_index(drop=True))
     
-    eret_we = convertLogReturnsToPercentage(eret_we, log_returns)
+    eret_we_pct = convertLogReturnsToPercentage(eret_we, log_returns)
     
-    return eret_we, stoxwe_add
+    return eret_we, stoxwe_add, eret_we_pct
 
 def convertLogReturnsToPercentage(eret_we, log_returns):
+    eret_we_copy = eret_we.copy()
     if not log_returns:
         print("Now converting log returns to percentage")
         exclude_cols = {'index', 'date', 'yw'}
-        exclude_cols.update([col for col in eret_we.columns if col.startswith('pf')])
-        for col in eret_we.columns:
+        exclude_cols.update([col for col in eret_we_copy.columns if col.startswith('pf')])
+        for col in eret_we_copy.columns:
             if col not in exclude_cols:
-                eret_we[col] = eret_we[col].apply(log_return_to_percentage)
-    return eret_we
+                print("New version of log_return_to_percentage")
+                eret_we_copy[col] =  (np.exp(eret_we[col]) - 1) * 100 # eret_we_copy[col].apply(log_return_to_percentage)
+    return eret_we_copy
 
 def log_return_to_percentage(log_return):
-    return (np.exp(log_return) - 1) * 100
+    result = (np.exp(log_return) - 1) * 100
+    print("New version of log_return_to_percentage")
+    return result
 
 def famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
     
@@ -260,21 +264,21 @@ def famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
     fmb = FamaMacBeth.from_formula(formula, df_betas).fit(cov_type='kernel')
     return fmb, df_betas
 
-def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, log_returns = True, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
-    eret_we, stoxwe_add = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts, log_returns = log_returns)
+def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, log_returns = False, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
+    eret_we, stoxwe_add, eret_we_pct = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts, log_returns = log_returns)
     print("Finished processing stoxwe")
     fmb, df_betas = rp.famaMacBeth(eret_we, pfname, formula = formula, window_size=window_size)
     print("Finished Fama-MacBeth")
-    return fmb, df_betas, eret_we, stoxwe_add
+    return fmb, df_betas, eret_we, stoxwe_add, eret_we_pct
 
-def famaMacBethMultiCase(pfname, add_innerkk_pf, cuts, cequity_mapper, ff3fw, ff5fw, stoxwe_orig, topic_map, log_returns = True):
+def famaMacBethMultiCase(pfname, add_innerkk_pf, cuts, cequity_mapper, ff3fw, ff5fw, stoxwe_orig, topic_map, log_returns = False):
     print("Running Fama-MacBeth regressions: 5 factors")
-    fmb_5, df_betas5, eret_we5, stoxwe_add = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff5fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
+    fmb_5, df_betas5, eret_we5, stoxwe_add, eret_we_pct5 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff5fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
     print("Running Fama-MacBeth regressions: 3 factors")
-    fmb_3, df_betas3, eret_we3, _ = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff3fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
+    fmb_3, df_betas3, eret_we3, _, eret_we_pct3 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff3fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
     fmb_1, df_betas1 = rp.famaMacBeth(eret_we5, pfname, formula = "eretw ~ 1 + MktRF + HKR", window_size=52*2)
     print("Running Fama-MacBeth regressions: 1 factor")
-    return fmb_5, fmb_3, fmb_1, df_betas5, df_betas3, df_betas1, eret_we5, eret_we3, stoxwe_add
+    return fmb_5, fmb_3, fmb_1, df_betas5, df_betas3, df_betas1, eret_we5, eret_we3, stoxwe_add, eret_we_pct5, eret_we_pct3
 
 def pseudo_monthly(eret_we_agg):
     # Keep only columns whose names match one of the set: date, eretw, Mkt.RF, SMB, HML, RMW, CMA, RF, HKR, HKR_NSB
@@ -432,9 +436,9 @@ def gmm(eret_we, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "Mkt.RF + 
     if quadriweekly:
         pseudo_monthly = rp.to_quadriweekly(data, colnames)
 
-        for col in pseudo_monthly.columns:
-            if col != 'date':
-                pseudo_monthly[col] = pseudo_monthly[col].apply(log_return_to_percentage)
+        # for col in pseudo_monthly.columns:
+        #     if col != 'date':
+        #         pseudo_monthly[col] = pseudo_monthly[col].apply(log_return_to_percentage)
     else:
         pseudo_monthly = data
         
@@ -452,7 +456,7 @@ def to_wide(eret_we, pfname):
         .groupby('yw')
         .mean())
     
-    eret_wide = eret_wide.pivot_table(index='yw', columns='pfkki3me3mb', values='eretw')
+    eret_wide = eret_wide.pivot_table(index='yw', columns=pfname, values='eretw')
     eret_wide = eret_wide.add_prefix('pf')
     eret_wide = eret_wide.reset_index()
     eret_wide = viz.preprocess_eret_we(eret_wide)

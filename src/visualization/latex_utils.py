@@ -12,7 +12,7 @@ def save_table_dual(figfolder, table, filename, tabular = False, row_names = Fal
     tex_content = table.to_latex(index = row_names, label = f"tab:{filename}", position = "H!")
     
     if tabular:
-        tex_content = re.search(r'\\begin{tabular}.*?\\end{tabular}', tex_content, re.DOTALL).group()
+        tex_content = extract_tabular_content(tex_content)
 
     with open(figfolder + filename + ".tex", 'w') as tex_file:
         tex_file.write(tex_content)
@@ -20,6 +20,10 @@ def save_table_dual(figfolder, table, filename, tabular = False, row_names = Fal
     # Print as HTML as well:
     with open(figfolder + filename + ".html", 'w') as html_file:
         html_file.write(table.to_html())
+
+def extract_tabular_content(tex_content):
+    tex_content = re.search(r'\\begin{tabular}.*?\\end{tabular}', tex_content, re.DOTALL).group()
+    return tex_content
 
 def get_quantile_term(maxkk):
     if maxkk == 3:

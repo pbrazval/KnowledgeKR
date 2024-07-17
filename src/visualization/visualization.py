@@ -175,15 +175,16 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     plot_returns(stoxwe_with_pfs, figfolder)
     return None
 
-def explore_eret_we(eret_we5, figfolder):
+def explore_eret_we(eret_we5, eret_we_pct5, figfolder, log_returns = False):
     svar_qwe = create_svar()
     eret_we_agg = preprocess_eret_we(eret_we5)
     eret_we_agg = eret_we_agg.merge(svar_qwe, on='yw', how='left')
     eret_qwe_agg = rp.pseudo_monthly(eret_we_agg) 
+
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
     tex_HKR_vs_mktrf(eret_qwe_agg, figfolder)
     tex_fmb_results_statistics(eret_we_agg, figfolder)
-    tex_gmm_results(eret_we5, None, figfolder)
+    tex_gmm_results(eret_we_pct5, None, figfolder)
     return None
 
 def tex_gmm_results(eret_we3, eret_we5, figfolder, case = 3):
@@ -191,33 +192,31 @@ def tex_gmm_results(eret_we3, eret_we5, figfolder, case = 3):
     summary3 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "HKR + Mkt.RF + SMB + HML")
     if case == 5:
         summary5 = rp.gmm(eret_we5, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'], formula = "HKR + Mkt.RF + SMB + HML + RMW + CMA")
-        covariate_order = ['HKR', 'MktRF', 'SMB', 'HML', 'RMW', 'CMA', 'Intercept']
+        covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA']
         gmmlist = [summary1, summary3, summary5]
         model_vector = ["Mkt", "FF3", "FF5"]
     else:
-        covariate_order = ['HKR', 'MktRF', 'SMB', 'HML', 'Intercept']
+        covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML']
         gmmlist = [summary1, summary3]
         model_vector = ["Mkt", "FF3"]    
     export_gmm_results(figfolder, covariate_order, gmmlist, model_vector)
 
 def export_gmm_results(figfolder, covariate_order, gmmlist, model_vector):
     stargazer = Stargazer(gmmlist)
-    stargazer.significant_digits(5)
-    stargazer.title("Fama-MacBeth Regressions of Portfolio Weekly Excess Returns")
     stargazer.covariate_order(covariate_order)
     stargazer.show_degrees_of_freedom(False)
     stargazer.show_f_statistic = False
     stargazer.show_residual_std_err = False
-    stargazer.table_label = "tab:fmb_results"
-    stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
+    stargazer.table_label = "tab:gmm"
     stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
-    with open(os.path.join(figfolder, "fmb_results.tex"), "w") as text_file:
+    result = extract_tabular_content(result)
+    with open(os.path.join(figfolder, "gmm.tex"), "w") as text_file:
         text_file.write(result)
 
     result = stargazer.render_html()
-    file_path = os.path.join(figfolder, "fmb_results.html")
+    file_path = os.path.join(figfolder, "gmm.html")
     with open(file_path, "w") as text_file:
         text_file.write(result)
 
@@ -252,7 +251,7 @@ def create_svar():
     df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
     # Convert date to year-week format:
 
-# # Calculate log returns for the Mkt-RF component
+    # Merton (1980) requires log-returns here.
     df['Mkt-RF'] = np.log(1 + df['Mkt-RF'] / 100)
 
 # # Resample the data by week and calculate the sum of squares of log returns for each week
@@ -293,7 +292,7 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     eret_we_agg = eret_we_agg.set_index('yw')
     plt.figure()
     factors = (eret_we_agg.loc[:, ['SMB', 'HKR']])
-    factors = factors + 1
+    factors = factors/100 + 1
     factors = factors.cumprod()
     h1b_date = pd.to_datetime("20200301", errors="coerce", format="%Y%m%d")
     year_week = h1b_date.strftime('%Y%U')

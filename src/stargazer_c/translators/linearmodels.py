@@ -3,7 +3,7 @@ Compatibility layer with results from linearmodels.
 """
 
 from math import sqrt
-
+import pandas as pd
 from linearmodels.iv.results import IVResults, OLSResults
 from linearmodels.panel.results import (
     PanelEffectsResults,
@@ -39,21 +39,13 @@ linear_model_map_panel = {
 
 gmm_map = {
     "p_values": "risk_premia_tstats",
-    "cov_values": "params",
+    "cov_values": "risk_premia",
     "cov_std_err": "risk_premia_se", #OK
     "t_values": "risk_premia_tstats", #OK
     "r2": "rsquared", #OK
-    "degree_freedom": None,#OK
-    "degree_freedom_resid": None, #OK
     "nobs": "nobs",#OK
-    "cov_names": "_factor_names", #OK
-    "conf_int_low_values": None,#OK
-    "conf_int_high_values": None,#OK
-    "resid_std_err":"risk_premia_se", #OK
-    "f_statistic": None, #OK
-    "f_p_value": None, #OK
-    "r2_adj": None, #OK
-    "pseudo_r2": None, #OK
+    "cov_names": "_factor_names", 
+    "resid_std_err":"risk_premia_se"
 }
 
 # data["dependent_variable"] = model.summary.tables[0].data[0][1]
@@ -83,16 +75,16 @@ def extract_model_data(model):
     elif isinstance(model, IVResults):
         # TODO: Add support for showing first stage results of IV models
         linearmodels_map = _merge_dicts(linearmodels_map_base, linear_model_map_panel)
-        # TODO: Add more relevant statistics for IV models
+        # TODO: Add more relevant statistics for IV modelspercentage
         data["sargan"] = model.sargan
     elif isinstance(model, GMMFactorModelResults):
         linearmodels_map = gmm_map
         for key, val in linearmodels_map.items():
             data[key] = _extract_feature(model, val)
-        data["p_values"] = [row[4] for row in model.summary.tables[1].data[1:]]
+        data["p_values"] = pd.Series([row[4] for row in model.summary.tables[1].data[1:]], index = [row[0] for row in model.summary.tables[1].data[1:]]).astype(float)
         data["dependent_variable"] = model.summary.tables[1].data[0][1]
-        data["conf_int_low_values"] =  [row[5] for row in model.summary.tables[1].data[1:]]
-        data["conf_int_high_values"] =  [row[6] for row in model.summary.tables[1].data[1:]]
+        data["conf_int_low_values"] =  pd.Series([row[5] for row in model.summary.tables[1].data[1:]], index = [row[0] for row in model.summary.tables[1].data[1:]]).astype(float)
+        data["conf_int_high_values"] = pd.Series([row[6] for row in model.summary.tables[1].data[1:]], index = [row[0] for row in model.summary.tables[1].data[1:]]).astype(float)
         return data
         # # data["cov_names"] = model.params._factor_names
         # # data["conf_int_low_values"] = None
@@ -131,6 +123,7 @@ classes = [
     (PanelResults, extract_model_data),
     (IVResults, extract_model_data),
     (OLSResults, extract_model_data),
+    (GMMFactorModelResults, extract_model_data)
 ]
 
 for klass, translator in classes:
