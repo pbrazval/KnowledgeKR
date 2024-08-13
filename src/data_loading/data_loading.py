@@ -95,11 +95,12 @@ def load_dataframes(modelname,start_time, clean_again=False):
         compustat_pt = clean_compustat(comp_funda2, peterstaylor)
         
         topic_map_orig = pd.read_csv(f"~/Documents/PhD (local)/Research/By Topic/Measuring knowledge capital risk/output/{modelname}/topic_map_2006_2022.csv")
+
         topic_map_unlabeled = create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, compustat_pt)
 
         
         variable_names = ['amazon_nov01_short', 'ff3fw', 'ff5fw',
-            'ff3fm', 'ff5fm', 'stoxmo_orig', 'comparison_measures', 'cequity_mapper', 'stoxda_orig', 'stoxwe_orig'
+            'ff3fm', 'ff5fm', 'stoxmo_orig', 'comparison_measures', 'cequity_mapper', 'stoxda_orig', 'stoxwe_orig', 'compustat_pt'
         ]
 
         for var_name in variable_names:
@@ -114,27 +115,21 @@ def load_dataframes(modelname,start_time, clean_again=False):
     else:
         
         #Load dataframes from pkl:
-        #patent_ik = pd.read_pickle(f"../data/patent_ik.pkl")
+
         amazon_nov01_short = pd.read_pickle(f"../data/amazon_nov01_short.pkl")
         cequity_mapper = pd.read_pickle(f"../data/cequity_mapper.pkl")
         ff3fw = pd.read_pickle(f"../data/ff3fw.pkl")
         ff5fw = pd.read_pickle(f"../data/ff5fw.pkl")
         ff3fm = pd.read_pickle(f"../data/ff3fm.pkl")
         ff5fm = pd.read_pickle(f"../data/ff5fm.pkl")
-        #linkt = pd.read_pickle(f"../data/linkt.pkl")
-        # Load dataframes from pkl:
+        compustat_pt = pd.read_pickle(f"../data/compustat_pt.pkl")
         topic_map_unlabeled = pd.read_pickle(f"../data/models/{modelname}/topic_map_unlabeled.pkl")
-        #topic_map_unlabeled = create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, compustat_pt)
-        #print("Tempo de execução:", time.time() - start_time)
         stoxda_orig = pd.read_pickle(f"../data/stoxda_orig.pkl")
         stoxmo_orig = pd.read_pickle(f"../data/stoxmo_orig.pkl")
         comparison_measures = pd.read_pickle(f"../data/comparison_measures.pkl")
-        #comp_funda2 = pd.read_pickle(f"../data/comp_funda2.pkl")
-        #peterstaylor = pd.read_pickle(f"../data/peterstaylor.pkl")
-        #skilldata_orig = pd.read_pickle(f"../data/skilldata_orig.pkl")
         stoxwe_orig = pd.read_pickle(f"../data/stoxwe_post2005short.pkl")
 
-    return amazon_nov01_short, cequity_mapper, ff3fw, ff5fw, ff3fm, ff5fm, topic_map_unlabeled, comparison_measures, stoxmo_orig, stoxda_orig, stoxwe_orig
+    return amazon_nov01_short, cequity_mapper, ff3fw, ff5fw, ff3fm, ff5fm, topic_map_unlabeled, comparison_measures, stoxmo_orig, stoxda_orig, stoxwe_orig, compustat_pt
 
 def create_ind12(df):
     # Add a new column 'ind12' with NaN values
@@ -274,13 +269,13 @@ def clean_skilldata(skilldata_orig):
     return skilldata
 
 def clean_compustat(comp_funda2, peterstaylor):
-    comp_funda2 = comp_funda2.loc[:, ["at", "GVKEY", "fyear", "prcc_f", "prcc_c", "ppegt", "csho", "ceq", "cusip", "exchg"]]
+    comp_funda2 = comp_funda2.loc[:, ["at", "GVKEY", "fyear", "prcc_f", "prcc_c", "ppegt", "csho", "ceq", "cusip", "exchg", "xrd"]]
     comp_funda2.dropna(subset=['GVKEY', 'fyear'], inplace=True)
     comp_funda2['fyear'] = comp_funda2['fyear'].astype(int)
     comp_funda2['GVKEY'] = comp_funda2['GVKEY'].astype(int)
     compustat_pt = comp_funda2.merge(peterstaylor, left_on=["fyear", "GVKEY"], right_on=["fyear", "gvkey"], how = "left") \
         .rename(columns={"fyear": "year"}) \
-        .loc[:, ["K_int_Know", "K_int", "at", "GVKEY", "year", "prcc_f", "prcc_c", "ppegt", "csho", "ceq", "cusip", "exchg"]]\
+        .loc[:, ["K_int_Know", "K_int", "at", "GVKEY", "year", "prcc_f", "prcc_c", "ppegt", "csho", "ceq", "cusip", "exchg", "xrd"]]\
         .rename(columns = {"GVKEY": "gvkey"})
     return compustat_pt
 
@@ -291,6 +286,11 @@ def create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, comp
     topic_map_unlabeled = topic_map_unlabeled.merge(skilldata, on=["naics4", "year"], how="left")
     topic_map_unlabeled = topic_map_unlabeled.merge(patent_ik, on=["gvkey", "year"], how="left")
     topic_map_unlabeled = topic_map_unlabeled.sort_values(["gvkey", "year"])
+    signed_petition = pd.read_csv("/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/data/signed_petition.csv")
+    signed_petition = signed_petition[['gvkey', 'signed']]
+    signed_petition['gvkey'] = signed_petition['gvkey'].astype(int)
+    # Merge with topic_map_unlabeled:
+    topic_map_unlabeled = topic_map_unlabeled.merge(signed_petition, on = ['gvkey'], how = 'left')
     # group by gvkey and fill missing values of xi_cumsum downwards
     topic_map_unlabeled["xi_cumsum"] = topic_map_unlabeled.sort_values(["gvkey", "year"]).groupby("gvkey")["xi_cumsum"].fillna(method="ffill")
     topic_map_unlabeled["xi_cumsum"] = topic_map_unlabeled["xi_cumsum"].fillna(0)
@@ -310,7 +310,7 @@ def create_topic_map_unlabeled(topic_map_orig, linkt, skilldata, patent_ik, comp
     # Taking the first row of each group
     topic_map_unlabeled = topic_map_unlabeled.groupby(['gvkey', 'year']).head(1).reset_index(drop=True)
     industry_names = ["Cnsmr non-dur.", "Cnsmr durbl", "Manuf", "Enrgy", "Chems", "BusEq", "Telcm", 
-                    "Utils", "Whlsl/Retail", "Hlth", "Other", "NoDef"]
+                    "Utils", "Whlsl/Retail", "Hlth", "Money", "Other"]
     industry_map = {i+1: name for i, name in enumerate(industry_names)}
     topic_map_unlabeled['ind12'] = topic_map_unlabeled['ind12'].map(industry_map)
     topic_map_unlabeled['ind12'] = topic_map_unlabeled['ind12'].astype('category')

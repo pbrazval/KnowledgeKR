@@ -38,11 +38,23 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
         case = "ff5"
     else:
         case = "ff3"
-        
+
+    # Your existing code
     stoxwe = (stoxwe_post2005short.
-            assign(y=lambda x: x['yw'] // 100).
-            merge(cequity_mapper, left_on=["PERMNO", "y"], right_on=["PERMNO", "year"], how="inner"))
+    assign(y=lambda x: x['yw'] // 100).
+    merge(cequity_mapper, left_on=["PERMNO", "y"], right_on=["PERMNO", "year"], how="inner"))
     stoxwe = stoxwe[stoxwe['crit_ALL'] == 1]
+
+    # Add the random column assignment
+    def random_assignment(group, frac_train=0.7):
+        n = len(group)
+        ones = int(n * frac_train)  # 70% of the group size
+        zeros = n - ones
+        group['train'] = np.random.permutation(np.concatenate([np.ones(ones), np.zeros(zeros)]))
+        return group
+
+    stoxwe = stoxwe.groupby('yw').apply(random_assignment).reset_index(drop=True)
+
     min_year = topic_map['year'].min()
 
     stoxwe = (stoxwe
@@ -56,6 +68,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
                     me = lambda x: x['csho'] * x['prcc_f'],
                     kk_share = lambda x: x['K_int_Know'] / x['ppegt'],
                     CUSIP8 = lambda x: x['cusip'].str[:-1]))
+    
     pfs = (stoxwe
         .query('yw % 100 == 26')  # Filter rows where yw % 100 == 26
         .drop(columns=['cusip'])  # Drop the 'cusip' column
@@ -147,9 +160,20 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
                 'RF': df['RF'].mean()
             }))
             .reset_index())
+        
+    HKR_NSB_ret, HKR_ret = calculate_HKR_returns(stoxwe_add)
     
-    # # Calculate HKR returns
+    eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
+               .merge(HKR_NSB_ret, on='yw', how='inner')
+                .rename(columns={'eret': 'eretw'})
+                .dropna()
+                .reset_index(drop=True))
     
+    eret_we_pct = convertLogReturnsToPercentage(eret_we, log_returns)
+    
+    return eret_we, stoxwe_add, eret_we_pct
+
+def calculate_HKR_returns(stoxwe_add):
     max_kknt = max(stoxwe_add['ntile_kk'])
     min_kknt = min(stoxwe_add['ntile_kk'])
     
@@ -179,34 +203,22 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
             .assign(HKR=lambda df: df[f'kk{max_kknt}'] - df[f'kk{min_kknt}'])
             .reset_index()
             .loc[:, ['yw', 'HKR']])
+    HKR_ret.columns.name = None  
     
-    HKR_ret.columns.name = None
-    
-    eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
-               .merge(HKR_NSB_ret, on='yw', how='inner')
-            .rename(columns={'eret': 'eretw'})
-            .dropna()
-            .reset_index(drop=True))
-    
-    eret_we_pct = convertLogReturnsToPercentage(eret_we, log_returns)
-    
-    return eret_we, stoxwe_add, eret_we_pct
+    return HKR_NSB_ret,HKR_ret
 
 def convertLogReturnsToPercentage(eret_we, log_returns):
     eret_we_copy = eret_we.copy()
     if not log_returns:
-        print("Now converting log returns to percentage")
         exclude_cols = {'index', 'date', 'yw'}
         exclude_cols.update([col for col in eret_we_copy.columns if col.startswith('pf')])
         for col in eret_we_copy.columns:
             if col not in exclude_cols:
-                print("New version of log_return_to_percentage")
                 eret_we_copy[col] =  (np.exp(eret_we[col]) - 1) * 100 # eret_we_copy[col].apply(log_return_to_percentage)
     return eret_we_copy
 
 def log_return_to_percentage(log_return):
     result = (np.exp(log_return) - 1) * 100
-    print("New version of log_return_to_percentage")
     return result
 
 def famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
@@ -256,10 +268,8 @@ def famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
         results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'HKR'])
         
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
-    # Added today: Jul 1st 2024
     results_df.dropna(inplace=True) 
     df_betas = results_df.set_index([pfname, 'yw'], inplace=False)
-    print("New kernel")
     # Multiply all the columns (if present) by 100 to get the percentage values, if they belong to the list: 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'
     fmb = FamaMacBeth.from_formula(formula, df_betas).fit(cov_type='kernel')
     return fmb, df_betas
@@ -427,7 +437,7 @@ def gmm(eret_we, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "Mkt.RF + 
     # Find the column of eret_we whose name starts with 'pf':
     pfname = next((col for col in eret_we.columns if col.startswith('pf')), None)
 
-    eret_subset, data = to_wide(eret_we, pfname)
+    eret_subset, data = to_wide(eret_we, pfname, factors)
 
     portfolios = [col for col in eret_subset.columns if col.startswith('pf')]
     
@@ -443,14 +453,14 @@ def gmm(eret_we, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "Mkt.RF + 
         pseudo_monthly = data
         
     mod = LinearFactorModelGMM.from_formula(formula, pseudo_monthly, portfolios=pseudo_monthly[portfolios])
-    results = mod.fit()
+    results = mod.fit(disp = 0)
     return results
 
 def log_return_to_percentage(log_return):
     return (np.exp(log_return) - 1)
 
 
-def to_wide(eret_we, pfname):
+def to_wide(eret_we, pfname, factors):
     eret_wide = eret_we[['yw', pfname, 'eretw']]
     eret_we_agg = (eret_we
         .groupby('yw')
@@ -462,5 +472,5 @@ def to_wide(eret_we, pfname):
     eret_wide = viz.preprocess_eret_we(eret_wide)
     eret_wide['date'] = viz.convert_yw_to_date(eret_wide['yw'])
     # Add a new column called date:
-    data = pd.concat([eret_wide.set_index('yw'), eret_we_agg[['Mkt.RF', 'SMB', 'HML', 'HKR']]], axis=1)
+    data = pd.concat([eret_wide.set_index('yw'), eret_we_agg[factors]], axis=1)
     return eret_wide, data

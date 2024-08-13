@@ -108,7 +108,7 @@ class Stargazer:
         """
         self.title_text = None
         self.show_header = True
-        self.dep_var_name = 'Dependent variable: '
+        self.dep_var_name = None # 'Dependent variable: '
         self.column_labels = None
         self.column_separators = None
         self.show_model_nums = True
@@ -134,7 +134,7 @@ class Stargazer:
         self.show_f_statistic = True
         self.show_dof = True
         self.show_notes = True
-        self.notes_label = 'Note:'
+        self.notes_label = ''
         self.notes_append = True
         self.custom_notes = []
         self.show_stars = True

@@ -48,21 +48,6 @@ gmm_map = {
     "resid_std_err":"risk_premia_se"
 }
 
-# data["dependent_variable"] = model.summary.tables[0].data[0][1]
-#     data["cov_names"] = model.params.index.values
-#     data["conf_int_low_values"] = model.conf_int().lower
-#     data["conf_int_high_values"] = model.conf_int().upper
-#     if isinstance(model, FamaMacBethResults):
-#         data["r2"] = model.rsquared_between
-#         data["resid_std_err"] = 0
-#         print("Special case for FamaMacBethResults")
-#     else:
-#         data["resid_std_err"] = sqrt(model.model_ss / model.df_resid)
-#     data["f_statistic"] = model.f_statistic.stat
-#     data["f_p_value"] = model.f_statistic.pval
-#     data["r2_adj"] = None
-#     data["pseudo_r2"] = None
-
 # IV specific statistics map
 linear_model_map_iv = dict()
 
@@ -106,7 +91,6 @@ def extract_model_data(model):
     if isinstance(model, FamaMacBethResults):
         data["r2"] = model.rsquared_between
         data["resid_std_err"] = 0
-        print("Special case for FamaMacBethResults")
     else:
         data["resid_std_err"] = sqrt(model.model_ss / model.df_resid)
     data["f_statistic"] = model.f_statistic.stat

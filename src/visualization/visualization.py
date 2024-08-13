@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import kurtosis, ttest_1samp
 # Date and time operations
 from datetime import datetime
+import traceback
 
 # Plotting and visualization
 import matplotlib.pyplot as plt
@@ -83,6 +84,8 @@ def explore_topic_map(topic_map, figfolder, nt = 4):
 
     tex_descriptive_statistics(figfolder, topic_map)    
 
+    tex_explore_missing_rd(topic_map, figfolder)
+
     fig_mean_tiy(topic_map, figfolder)
     
     tex_average_topic_loadings_by_high_tech(topic_map, figfolder, nt)
@@ -102,8 +105,84 @@ def explore_topic_map(topic_map, figfolder, nt = 4):
     fig_histogram_kk(topic_map, figfolder)
 
     fig_histogram_kk_by_ind12(topic_map, figfolder)
+    return None
 
-    print("Finished!")
+import pandas as pd
+import numpy as np
+import os
+
+import pandas as pd
+import numpy as np
+import os
+
+@announce_execution
+def tex_explore_missing_rd(topic_map, figfolder):
+    def prepare_data(df):
+        subset = df.copy()
+        subset['log_at'] = np.log(subset['at'])
+        subset['log_ppegt'] = np.log(subset['ppegt'])
+        subset['log_xrd'] = np.log(subset['xrd'])
+        subset['xi_yeartotal'] = subset['xi_yeartotal'].astype(float)
+        return subset
+
+    def analyze_group(group, columns):
+        return group[columns].agg(['median', 'mean', 'std'])
+
+    def format_result(df):
+        format_dict = {
+            'KKR': lambda x: round(x, 3) if pd.notnull(x) else x,
+            'Skill': lambda x: round(x, 3) if pd.notnull(x) else x,
+            'at': lambda x: int(x) if pd.notnull(x) else x,
+            'ppegt': lambda x: int(x) if pd.notnull(x) else x,
+            'xi_yeartotal': lambda x: int(x) if pd.notnull(x) else x,
+            'xrd': lambda x: int(x) if pd.notnull(x) else x
+        }
+        for col, func in format_dict.items():
+            if col in df.columns:
+                df[col] = df[col].map(func)
+        return df
+
+    def save_to_latex(df, filename):
+        latex_table = df.to_latex(multicolumn=True, multirow=True, float_format="{:0.3f}".format, na_rep='--')
+        with open(os.path.join(figfolder, filename), 'w') as f:
+            f.write(latex_table)
+        print(f"LaTeX table has been saved to '{os.path.join(figfolder, filename)}'")
+
+    # Prepare data
+    subset = prepare_data(topic_map)
+
+    # Analysis by xrdtype
+    subset = subset.rename(columns={'xrdtype': 'RD Type'})
+    subset['RD Type'] = np.where(subset['xrd'].isna(), 'nan',
+                                 np.where(subset['xrd'] == 0, 'zero', 'positive'))
+    columns_to_analyze_xrd = ['xrd', 'Skill', 'at', 'ppegt', 'xi_yeartotal']
+    result_xrd = pd.concat([
+        analyze_group(subset[subset['RD Type'] == type], columns_to_analyze_xrd)
+        for type in ['nan', 'zero', 'positive']
+    ], keys=['nan', 'zero', 'positive'], names=['RD Type', 'statistic'])
+
+    # Analysis by signed
+    columns_to_analyze_signed = ['xrd', 'Skill', 'at', 'ppegt', 'xi_yeartotal']
+    result_signed = pd.concat([
+        analyze_group(subset[subset['signed'] == value], columns_to_analyze_signed)
+        for value in [0, 1]
+    ], keys=['Unsigned (0)', 'Signed (1)'], names=['Signed', 'statistic'])
+
+    # Format results
+    result_signed = format_result(result_signed)
+    result_xrd = format_result(result_xrd)
+
+    # Rename columns
+    result_signed.columns = ['R\\&D', 'Skill', 'Assets', 'PPE', 'PYVA']
+    result_xrd.columns = ['R\\&D', 'Skill', 'Assets', 'PPE', 'PYVA']
+
+    # Ensure figure folder exists
+    os.makedirs(figfolder, exist_ok=True)
+
+    # Save both tables to LaTeX
+    save_to_latex(result_signed, 'signed_analysis_table.tex')
+    save_to_latex(result_xrd, 'xrd_type_analysis_table.tex')
+
     return None
 
 @announce_execution
@@ -134,9 +213,10 @@ def tex_descriptive_statistics(figfolder, topic_map):
     
     # Function to remove trailing zeros
     def remove_trailing_zeros(x):
-        return '{:g}'.format(float(x))
-    
-    # Apply the function to remove trailing zeros
+        if isinstance(x, float):
+            return '{:g}'.format(float(x))
+        return f"{x:.0f}" if x.is_integer() else f"{x:.2f}"
+
     desc_no_zeros = desc.applymap(remove_trailing_zeros)
     
     # Transpose the result
@@ -175,7 +255,7 @@ def explore_stoxwe_with_pfs(stoxwe_with_pfs, figfolder):
     plot_returns(stoxwe_with_pfs, figfolder)
     return None
 
-def explore_eret_we(eret_we5, eret_we_pct5, figfolder, log_returns = False):
+def explore_eret_we(eret_we3, eret_we5, eret_we_pct3, eret_we_pct5, figfolder, gmm_case):
     svar_qwe = create_svar()
     eret_we_agg = preprocess_eret_we(eret_we5)
     eret_we_agg = eret_we_agg.merge(svar_qwe, on='yw', how='left')
@@ -183,23 +263,38 @@ def explore_eret_we(eret_we5, eret_we_pct5, figfolder, log_returns = False):
 
     fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder)
     tex_HKR_vs_mktrf(eret_qwe_agg, figfolder)
-    tex_fmb_results_statistics(eret_we_agg, figfolder)
-    tex_gmm_results(eret_we_pct5, None, figfolder)
+    tex_sharpe_table(eret_we_agg, figfolder)
+    tex_gmm_results(eret_we_pct3, eret_we_pct5, figfolder, case = gmm_case)
     return None
 
 def tex_gmm_results(eret_we3, eret_we5, figfolder, case = 3):
-    summary1 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'HKR'], formula = "HKR + Mkt.RF")
-    summary3 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "HKR + Mkt.RF + SMB + HML")
-    if case == 5:
-        summary5 = rp.gmm(eret_we5, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'], formula = "HKR + Mkt.RF + SMB + HML + RMW + CMA")
-        covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA']
-        gmmlist = [summary1, summary3, summary5]
-        model_vector = ["Mkt", "FF3", "FF5"]
-    else:
-        covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML']
-        gmmlist = [summary1, summary3]
-        model_vector = ["Mkt", "FF3"]    
-    export_gmm_results(figfolder, covariate_order, gmmlist, model_vector)
+    try:
+        summary1 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'HKR'], formula = "HKR + Mkt.RF")
+        summary3 = rp.gmm(eret_we3, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR'], formula = "HKR + Mkt.RF + SMB + HML")
+        if case == 5:
+            try: 
+                summary5 = rp.gmm(eret_we5, factors = ['Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'], formula = "HKR + Mkt.RF + SMB + HML + RMW + CMA")
+            except np.linalg.LinAlgError:
+                print("Error in case 5. LinAlgError")
+                return None
+            covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA']
+            gmmlist = [summary1, summary3, summary5]
+            model_vector = ["Mkt", "FF3", "FF5"]
+        else:
+            covariate_order = ['HKR', 'Mkt.RF', 'SMB', 'HML']
+            gmmlist = [summary1, summary3]
+            model_vector = ["Mkt", "FF3"]    
+        export_gmm_results(figfolder, covariate_order, gmmlist, model_vector)
+    except Exception as e:
+        print(f"Error in exporting GMM results: {e}")
+        traceback_file = os.path.join(figfolder, "error_traceback.txt")
+        
+        # Save the traceback to the file
+        with open(traceback_file, "w") as f:
+            traceback.print_exc(file=f)
+        
+        print(f"Traceback saved to: {traceback_file}")
+    return None
 
 def export_gmm_results(figfolder, covariate_order, gmmlist, model_vector):
     stargazer = Stargazer(gmmlist)
@@ -268,7 +363,6 @@ def create_svar():
 
 @announce_execution
 def tex_HKR_vs_mktrf(eret_qwe_agg, figfolder):
-    print("Now using pseudo-monthly returns")
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "SMB + HML + HKR", skip_crises=False)
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "HKR", skip_crises=False)
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 1, regressors = "SMB + HML + HKR", skip_crises=True)
@@ -277,7 +371,6 @@ def tex_HKR_vs_mktrf(eret_qwe_agg, figfolder):
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "HKR", skip_crises=False)
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "SMB + HML + HKR", skip_crises=True)
     rp.HKR_vs_mktrf_qwe(eret_qwe_agg, figfolder, periods = [1, 3, 13, 26, 39, 52, 65], moment = 2, regressors = "HKR", skip_crises=True)
-    print("Finished using pseudo-monthly returns!")
 
 
 @announce_execution
@@ -317,40 +410,44 @@ def fig_h1b_vs_smb_kkhml(eret_we_agg, figfolder):
     plt.close()
 
 @announce_execution
-def tex_fmb_results_statistics(eret_we_agg, figfolder):
+def tex_sharpe_table(eret_we_agg, figfolder):
     # Pick columns only in set {'MktRF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA'}:
     desired_columns = {'Mkt.RF', 'SMB', 'HML', 'HKR', 'RMW', 'CMA', 'HKR_NSB', 'HKR_SB'}
-
     eret_we_agg = eret_we_agg.loc[:, [col for col in eret_we_agg.columns if col in desired_columns]]
-        # Convert values from weekly to monthly:
     summary = eret_we_agg.describe()
     # Transpose the dataframe:
     summary = summary.T
-    # Multiply the values by 4.35 of all the columns except count:
-    summary.loc[:, summary.columns != 'count'] = summary.loc[:, summary.columns != 'count'] * 4.35
     # Represent count as integer
-    summary['count'] = summary['count'].astype(int)
-
-    summary['Sharpe'] = summary['mean'] / summary['std']
-
-    summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']] =\
-        summary[['mean', 'std', 'min', 'max', '25%', '50%', '75%']].applymap(to_percentage)
-
-    summary = summary[['count', 'mean', 'std', 'Sharpe', 'min', '25%', '50%', '75%', 'max']]
+    # Rename count to Count:
+    summary = summary.rename(columns = {"count": "Count"})
+    summary['Count'] = summary['Count'].astype(int)
+    
+    for col in summary.columns:
+        if col not in ['Sharpe', 'std', 'Count']:
+            summary[col] = (np.exp(summary[col] * 52) - 1) * 100
+    
+    summary['SD'] = summary['std'] * np.sqrt(52) * 100
+    summary['Sharpe'] = summary['mean'] / summary['SD']
+    
+    summary = summary.round(3)
     summary['Sharpe'] = summary['Sharpe'].round(3)
-    # Show only 3 digits after the decimal point for the Sharpe ratio:
-    summary['Sharpe'] = summary['Sharpe'].apply(lambda x: f"{x:.3f}")
     
-    # Rename columns:
-    summary = summary.rename(columns = {"count": "Count", "mean": "Mean", "std": "SD", "min": "Min", "25%": "25\\%", "50%": "50\\%", "75%": "75\\%", "max": "Max"})
-    # Remove min and max columns
-    summary = summary.drop(columns = ["Min", "Max"])
-    # Show row names as a column:
-    summary = summary.reset_index()
-    summary = summary.rename(columns = {"index": "Factor"})
+    summary = summary.rename(columns = {"mean": "Mean", "25%": "25\\%", "50%": "50\\%", "75%": "75\\%"})
+    summary = summary[['Count', 'Mean', 'SD', 'Sharpe', '25\\%', '50\\%', '75\\%']]
     
+    summary = summary.reset_index().rename(columns = {"index": "Factor"})
+    summary['Mean'] = summary['Mean'].apply(lambda x: f"{x:.2f}\\%")
+    summary['SD'] = summary['SD'].apply(lambda x: f"{x:.2f}\\%")
+    summary['Sharpe'] = summary['Sharpe'].apply(lambda x: f"{x:.2f}")
+    summary['25\\%'] = summary['25\\%'].apply(lambda x: f"{x:.1f}\\%")
+    summary['50\\%'] = summary['50\\%'].apply(lambda x: f"{x:.1f}\\%")
+    summary['75\\%'] = summary['75\\%'].apply(lambda x: f"{x:.1f}\\%")
+    
+    factor_order = ['HKR', 'Mkt.RF', 'SMB', 'HML', 'RMW', 'CMA']
+    summary = summary[summary['Factor'].isin(factor_order)].set_index('Factor').loc[factor_order].reset_index()
+
+    filename = "sharpe_table"
     table = summary
-    filename = "summary_statistics"
     with open(figfolder + filename + ".html", 'w') as html_file:
             html_file.write(table.to_html())
     
@@ -407,7 +504,7 @@ def tex_fmb_results(fmb_list, figfolder):
     stargazer.table_label = "tab:fmb_results"
     # stargazer.show_t_statistic = True 
     # stargazer.show_footer = False
-    stargazer.dep_var_name = "Dep. var: Portfolio weekly excess return - "
+    # stargazer.dep_var_name = "Dep. var: Portfolio weekly excess returns"
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
     model_vector = ["Mkt", "FF3", "FF5"]
     stargazer.custom_columns(model_vector)
@@ -609,7 +706,7 @@ def amazon_graph(amazon_nov01_short, figfolder):
     amazon_nov01_short['amazon'] = 100 * amazon_nov01_short['amazon'] / specific_date_values['amazon'].values[0]
     
     # Plotting
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     plt.plot('Date', 'nasdaq', data=amazon_nov01_short, color='blue', label='NASDAQ')
     plt.plot('Date', 'amazon', data=amazon_nov01_short, color='red', label='Amazon')
     plt.axvline(x=pd.to_datetime("2001-11-13"), linestyle='--', color='black')
@@ -622,11 +719,14 @@ def amazon_graph(amazon_nov01_short, figfolder):
     plt.xticks(rotation=45)
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=1))
+    # Change font of the y-axis ticks:
+    plt.yticks(fontsize=8)
     plt.grid(True)
-    
-    # Save the plot
-    plt.savefig(figfolder + "amazon_nov01.png", dpi=600)
+    plt.tight_layout()
+    # # Save the plot
+    plt.savefig(figfolder + "amazon_nov01.png", dpi = 600)
     plt.close()
+    return None
 
 @announce_execution
 def fig_mean_tiy(df, figfolder):
@@ -640,7 +740,7 @@ def fig_mean_tiy(df, figfolder):
     long_df = pd.melt(avg_df, id_vars=['year'], var_name='topic', value_name='intensity')
     
     # Create the plot
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     sns.lineplot(data=long_df, x='year', y='intensity', hue='topic')
     # Set ylim
     plt.ylim(0.1, 0.5)
@@ -953,9 +1053,8 @@ def explore_betas(df_betas, quantiles, figfolder):
     
     # Set the new index and drop the redundant column
     betas_exh = betas_exh.drop(columns=['pfname'])
-    betas_exh.rename(columns={'long_pfname': 'PF', "HKR_mean": "beta_HKR", "eretw_mean": "RET", "eretw_tstat": "t(RET)", "alpha_mean": "alpha", "alpha_tstat": "t(alpha)", "HKR_tstat": "t(beta_HKR)"}, inplace=True)
-    # Get only columns ['PF', 'alpha', 't(alpha)', 'beta_HKR', 't(beta_HKR)', 'RET', 't(RET)']:
-    betas_exh = betas_exh[['PF', 'alpha', 't(alpha)', 'beta_HKR', 't(beta_HKR)', 'RET']]
+    betas_exh.rename(columns={'long_pfname': 'Portfolio', "HKR_mean": "beta_HKR", "eretw_mean": "RET", "eretw_tstat": "t(RET)", "alpha_mean": "alpha", "alpha_tstat": "t(alpha)", "HKR_tstat": "t(beta_HKR)"}, inplace=True)
+    betas_exh = betas_exh[['Portfolio', 'alpha', 't(alpha)', 'beta_HKR', 't(beta_HKR)', 'RET']]
     # # Convert alpha and RET to percentage, round to 2 decimal places, and add percentage sign:
     betas_exh['alpha'] = (betas_exh['alpha'] * 100).round(2).astype(str) + r'\%'
     betas_exh['RET'] = (betas_exh['RET'] * 100).round(2).astype(str) + r'\%'
@@ -966,7 +1065,7 @@ def explore_betas(df_betas, quantiles, figfolder):
     betas_exh['beta_HKR'] = betas_exh['beta_HKR'].round(3).apply(lambda x: f"{x:.3f}")
 
 
-    betas_exh.columns = ['PF',r'$\alpha$',r't($\alpha$)',r'$\beta_\text{HKR}$',r't($\beta_\text{HKR}$)','RET']
+    betas_exh.columns = ['Portfolio',r'$\alpha$',r't($\alpha$)',r'$\beta_\text{HKR}$',r't($\beta_\text{HKR}$)','RET']
     filename = "betas"
     with open(figfolder + filename + ".html", 'w') as html_file:
             html_file.write(betas_exh.to_html())
