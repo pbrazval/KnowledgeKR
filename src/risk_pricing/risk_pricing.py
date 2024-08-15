@@ -32,44 +32,79 @@ def get_fiscal_year_we(yw):
     fy = [y + 1 if w > 26 else y for y, w in zip(year, week)]
     return fy
 
-def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, add_innerkk_pf, kki_cuts, log_returns):
-    # Apply the conditions and choices to create the mb_group column
-    if "CMA" in ffm.columns:
-        case = "ff5"
-    else:
-        case = "ff3"
+def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts, log_returns, oos = False, frac_train = 0.7):
 
-    # Your existing code
-    stoxwe = (stoxwe_post2005short.
-    assign(y=lambda x: x['yw'] // 100).
-    merge(cequity_mapper, left_on=["PERMNO", "y"], right_on=["PERMNO", "year"], how="inner"))
-    stoxwe = stoxwe[stoxwe['crit_ALL'] == 1]
-
-    # Add the random column assignment
-    def random_assignment(group, frac_train=0.7):
-        n = len(group)
-        ones = int(n * frac_train)  # 70% of the group size
-        zeros = n - ones
-        group['train'] = np.random.permutation(np.concatenate([np.ones(ones), np.zeros(zeros)]))
-        return group
-
-    stoxwe = stoxwe.groupby('yw').apply(random_assignment).reset_index(drop=True)
-
-    min_year = topic_map['year'].min()
-
-    stoxwe = (stoxwe
-            .merge(topic_map, left_on=["PERMNO", "y"], right_on=["LPERMNO", "year"], how="inner")
-            .query('y >= @min_year')
-            .merge(ffm, on = "yw", how = "left")
-            .assign(eretw = lambda x: x['retw'] - x['RF'])
-            .dropna(subset = ['retw'])
-            .assign(fiscalyear = lambda x: rp.get_fiscal_year_we(x['yw']))
-            .assign(mb = lambda x: (x['csho'] * x['prcc_f']) / x['ceq'], 
-                    me = lambda x: x['csho'] * x['prcc_f'],
-                    kk_share = lambda x: x['K_int_Know'] / x['ppegt'],
-                    CUSIP8 = lambda x: x['cusip'].str[:-1]))
+    case = "ff5" if "CMA" in ffm.columns else "ff3"
     
-    pfs = (stoxwe
+    # Also assigns the train column:
+    # stoxwe: adds Compustat data, topic map, and Fama-French data
+    stoxwe = create_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, frac_train)
+    
+    # Assigns portfolios to stocks, according to different definitions
+    # stox2pfs will only contain stocks in the test set
+    stox2pfs = create_portfolios(add_innerkk_pf, kki_cuts, stoxwe, oos)
+    
+    # will only calculate returns for OOS stocks because of inner merge with stox2pfs
+    # stoxwe_add will only contain OOS
+    pf_ret, stoxwe_add = calculate_portfolio_returns(pfname, stox2pfs, case, stoxwe)
+        
+    HKR_NSB_ret, HKR_ret = calculate_HKR_returns(stoxwe_add, oos)
+    
+    eret_we, eret_we_pct = pfret_and_factors(log_returns, pf_ret, HKR_NSB_ret, HKR_ret)
+    
+    return eret_we, stoxwe_add, eret_we_pct
+
+def pfret_and_factors(log_returns, pf_ret, HKR_NSB_ret, HKR_ret):
+    eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
+               .merge(HKR_NSB_ret, on='yw', how='inner')
+                .rename(columns={'eret': 'eretw'})
+                .dropna()
+                .reset_index(drop=True))
+    
+    eret_we_pct = convertLogReturnsToPercentage(eret_we, log_returns)
+    return eret_we, eret_we_pct
+
+def calculate_portfolio_returns(pfname, stox2pfs, case, stoxwe):
+    stoxwe_add = (stoxwe.copy()
+            .rename(columns={'gvkey_x': 'gvkey'})
+            .merge(stox2pfs, on=['gvkey', 'fiscalyear'], how='inner'))
+
+    if case == "ff3":
+        pf_ret = (stoxwe_add.dropna(subset=['eretw', 'me'])
+            .groupby(['yw', pfname])  # Replace pfname with the actual column name
+            .apply(lambda df: pd.Series({
+                'eret': (df['eretw'] * df['me']).sum() / df['me'].sum(),
+                'Mkt.RF': df['Mkt-RF'].mean(),
+                'SMB': df['SMB'].mean(),
+                'HML': df['HML'].mean(),
+                'RF': df['RF'].mean()
+            }))
+            .reset_index())
+    else:
+        pf_ret = (stoxwe_add.dropna(subset=['eretw', 'me'])
+            .groupby(['yw', pfname])  # Replace pfname with the actual column name
+            .apply(lambda df: pd.Series({
+                'eret': (df['eretw'] * df['me']).sum() / df['me'].sum(),
+                'Mkt.RF': df['Mkt-RF'].mean(),
+                'SMB': df['SMB'].mean(),
+                'HML': df['HML'].mean(),
+                'CMA': df['CMA'].mean(),
+                'RMW': df['RMW'].mean(),
+                'RF': df['RF'].mean()
+            }))
+            .reset_index())
+            
+    return pf_ret, stoxwe_add
+
+def create_portfolios(add_innerkk_pf, kki_cuts, stoxwe, oos):
+    # Filter rows where train = 0:
+    if oos:
+        stoxwe_local = stoxwe.copy()
+        stoxwe_local = stoxwe_local[stoxwe_local['train'] == 0]
+    else:
+        stoxwe_local = stoxwe.copy()
+
+    stox2pfs = (stoxwe_local
         .query('yw % 100 == 26')  # Filter rows where yw % 100 == 26
         .drop(columns=['cusip'])  # Drop the 'cusip' column
         .dropna(subset=['me', 'mb'])  # Drop rows where x'me' or 'mb' is NA
@@ -84,18 +119,18 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
         .assign(me_group=lambda df: np.where(df['me'] < df['med_NYSE_me'], 1, 2)))
     
     conditions = [
-        pfs['mb'] <= pfs['med_NYSE_mb30p'],  # Condition for mb_group = 1
-        (pfs['mb'] > pfs['med_NYSE_mb30p']) & (pfs['mb'] <= pfs['med_NYSE_mb70p']),  # Condition for mb_group = 2
-        pfs['mb'] > pfs['med_NYSE_mb70p']  # Condition for mb_group = 3
+        stox2pfs['mb'] <= stox2pfs['med_NYSE_mb30p'],  # Condition for mb_group = 1
+        (stox2pfs['mb'] > stox2pfs['med_NYSE_mb30p']) & (stox2pfs['mb'] <= stox2pfs['med_NYSE_mb70p']),  # Condition for mb_group = 2
+        stox2pfs['mb'] > stox2pfs['med_NYSE_mb70p']  # Condition for mb_group = 3
     ]
 
     # Choices corresponding to each condition
     choices = [1, 2, 3]
 
     # Apply the conditions and choices to create the mb_group column
-    pfs['mb_group'] = np.select(conditions, choices, default=np.nan)
+    stox2pfs['mb_group'] = np.select(conditions, choices, default=np.nan)
     if add_innerkk_pf:
-        pfs = (pfs #.drop(columns=['med_NYSE_me', 'med_NYSE_mb30p', 'med_NYSE_mb70p'])  # Drop the columns used to create 'me_group' and 'mb_group'
+        stox2pfs = (stox2pfs #.drop(columns=['med_NYSE_me', 'med_NYSE_mb30p', 'med_NYSE_mb70p'])  # Drop the columns used to create 'me_group' and 'mb_group'
                 .assign(pf2me3mb=lambda x: 10 * x['me_group'] + x['mb_group'])
                 .groupby('y')
                 .apply(lambda df: df.assign(me_3tile=1+pd.qcut(df['me'], 3, labels=False, duplicates='raise'),
@@ -116,7 +151,7 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
                 .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
         )
     else:
-        pfs = (pfs #.drop(columns=['med_NYSE_me', 'med_NYSE_mb30p', 'med_NYSE_mb70p'])  # Drop the columns used to create 'me_group' and 'mb_group'
+        stox2pfs = (stox2pfs #.drop(columns=['med_NYSE_me', 'med_NYSE_mb30p', 'med_NYSE_mb70p'])  # Drop the columns used to create 'me_group' and 'mb_group'
                 .assign(pf2me3mb=lambda x: 10 * x['me_group'] + x['mb_group'])
                 .groupby('y')
                 .apply(lambda df: df.assign(me_3tile=1+pd.qcut(df['me'], 3, labels=False, duplicates='raise'),
@@ -131,53 +166,59 @@ def process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfn, ad
                 .rename(columns={'gvkey_x': 'gvkey'})
                 .assign(fiscalyear=lambda x: x['fiscalyear'] + 1)
         )
-
-    stoxwe_add = (stoxwe.copy()
-                .rename(columns={'gvkey_x': 'gvkey'})
-                .merge(pfs, on=['gvkey', 'fiscalyear'], how='inner'))
-    
-    if case == "ff3":
-        pf_ret = (stoxwe_add.dropna(subset=['eretw', 'me'])
-            .groupby(['yw', pfn])  # Replace pfn with the actual column name
-            .apply(lambda df: pd.Series({
-                'eret': (df['eretw'] * df['me']).sum() / df['me'].sum(),
-                'Mkt.RF': df['Mkt-RF'].mean(),
-                'SMB': df['SMB'].mean(),
-                'HML': df['HML'].mean(),
-                'RF': df['RF'].mean()
-            }))
-            .reset_index())
-    else:
-        pf_ret = (stoxwe_add.dropna(subset=['eretw', 'me'])
-            .groupby(['yw', pfn])  # Replace pfn with the actual column name
-            .apply(lambda df: pd.Series({
-                'eret': (df['eretw'] * df['me']).sum() / df['me'].sum(),
-                'Mkt.RF': df['Mkt-RF'].mean(),
-                'SMB': df['SMB'].mean(),
-                'HML': df['HML'].mean(),
-                'CMA': df['CMA'].mean(),
-                'RMW': df['RMW'].mean(),
-                'RF': df['RF'].mean()
-            }))
-            .reset_index())
         
-    HKR_NSB_ret, HKR_ret = calculate_HKR_returns(stoxwe_add)
-    
-    eret_we = (pf_ret.merge(HKR_ret, on='yw', how='inner')
-               .merge(HKR_NSB_ret, on='yw', how='inner')
-                .rename(columns={'eret': 'eretw'})
-                .dropna()
-                .reset_index(drop=True))
-    
-    eret_we_pct = convertLogReturnsToPercentage(eret_we, log_returns)
-    
-    return eret_we, stoxwe_add, eret_we_pct
+    return stox2pfs
 
-def calculate_HKR_returns(stoxwe_add):
-    max_kknt = max(stoxwe_add['ntile_kk'])
-    min_kknt = min(stoxwe_add['ntile_kk'])
+def create_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, frac_train):
+    stoxwe = (stoxwe_post2005short.
+    assign(y=lambda x: x['yw'] // 100).
+    merge(cequity_mapper, left_on=["PERMNO", "y"], right_on=["PERMNO", "year"], how="inner"))
+    stoxwe = stoxwe[stoxwe['crit_ALL'] == 1]
     
-    HKR_NSB_ret = (stoxwe_add.dropna(subset=['KKR'])
+    np.random.seed(123)
+    # Add the random column assignment
+    def random_assignment(group, frac_train):
+        n = len(group)
+        ones = int(n * frac_train)  # 70% of the group size
+        zeros = n - ones
+        # Set seed:
+        group['train'] = np.random.permutation(np.concatenate([np.ones(ones), np.zeros(zeros)]))
+        return group
+
+    stoxwe = stoxwe.groupby('yw').apply(lambda x: random_assignment(x, frac_train)).reset_index(drop=True)
+
+    min_year = topic_map['year'].min()
+
+    stoxwe = (stoxwe
+            .merge(topic_map, left_on=["PERMNO", "y"], right_on=["LPERMNO", "year"], how="inner")
+            .query('y >= @min_year')
+            .merge(ffm, on = "yw", how = "left")
+            .assign(eretw = lambda x: x['retw'] - x['RF'])
+            .dropna(subset = ['retw'])
+            .assign(fiscalyear = lambda x: rp.get_fiscal_year_we(x['yw']))
+            .assign(mb = lambda x: (x['csho'] * x['prcc_f']) / x['ceq'], 
+                    me = lambda x: x['csho'] * x['prcc_f'],
+                    kk_share = lambda x: x['K_int_Know'] / x['ppegt'],
+                    CUSIP8 = lambda x: x['cusip'].str[:-1]))
+                    
+    return stoxwe
+
+def calculate_HKR_returns(stoxwe, oos):
+
+    if oos:
+        stoxwe_local = stoxwe.copy()
+        stoxwe_local = stoxwe_local[stoxwe_local['train'] == 1]
+    else:
+        stoxwe_local = stoxwe.copy()
+
+    # stoxwe_local = (stoxwe.copy()
+    #     .rename(columns={'gvkey_x': 'gvkey'})
+    #     .merge(stox2pfs, on=['gvkey', 'fiscalyear'], how='inner'))
+        
+    max_kknt = max(stoxwe_local['ntile_kk'])
+    min_kknt = min(stoxwe_local['ntile_kk'])
+    
+    HKR_NSB_ret = (stoxwe_local.dropna(subset=['KKR'])
                 .groupby(['yw', 'ntile_kk'])
                 .apply(lambda df: pd.Series({
                     'eret': (df['eretw'] * df['me']).sum() / df['me'].sum()}))
@@ -188,7 +229,7 @@ def calculate_HKR_returns(stoxwe_add):
                 [['HKR_NSB']]
                 .reset_index())
     
-    HKR_ret = (stoxwe_add
+    HKR_ret = (stoxwe_local
             .loc[:, ['yw', 'ntile_kk', 'me_group', 'KKR', 'eretw', 'me']]
             .dropna(subset=['KKR'])
             .groupby(['yw', 'ntile_kk', 'me_group'])
@@ -233,59 +274,138 @@ def famaMacBeth(eret_we, pfname, formula = None, window_size = 52):
     elif formula == "eretw ~ 1 + MktRF + HKR":
         case = "ff1"
     else:
-        raise ValueError("Invalid formula. Please provide a valid formula for the regression.")
+        case = "custom"
+        #raise ValueError("Invalid formula. Please provide a valid formula for the regression.")
     
     eret_we2 = add_constant(eret_we, prepend=False)
     eret_we2.set_index('yw', inplace=True)
     eret_we2.rename(columns={'const': 'alpha', 'Mkt.RF': 'MktRF'}, inplace=True)
     results_list = []
-
-    # Iterate over each unique value of pfkk3me3mb
     for pf_name in eret_we2[pfname].unique():
-        # Subset the DataFrame for the current pfkk3me3mb
         subset_data = eret_we2[eret_we2[pfname] == pf_name]
-        
-        # Initialize and fit the RollingOLS model
         mod = RollingOLS.from_formula(formula, data=subset_data, window=window_size, expanding=False)
         rres = mod.fit(cov_type="HC0", method="pinv", params_only=True)
         
-        # Assuming your DataFrame's index contains the time window identifier 'yw'
-        # Extract coefficients for each window and create a DataFrame
         for idx, params in rres.params.iterrows():
-            if case == "ff3":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
-            elif case == "ff5":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
-            elif case == "ff1":
-                results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['HKR']])
-
-    # Convert the list of results into a DataFrame
-    if case == "ff3":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR'])
-    elif case == "ff5":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
-    elif case == "ff1":
-        results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'HKR'])
-        
+            results_list.append([idx, pf_name] + list(params))
+    
+    columns = ['yw', pfname] + formula.split('~')[1].replace(' ', '').split('+')
+    results_df = pd.DataFrame(results_list, columns=columns)
+    if '1' in results_df.columns:
+        results_df = results_df.rename(columns={'1': 'alpha'})
+    
     results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
-    results_df.dropna(inplace=True) 
-    df_betas = results_df.set_index([pfname, 'yw'], inplace=False)
-    # Multiply all the columns (if present) by 100 to get the percentage values, if they belong to the list: 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'
+    results_df.dropna(inplace=True)
+    df_betas = estimate_factor_betas_and_predict_returns(results_df, eret_we, 'pfkki3me3mb', formula)
+
+    # df_betas = results_df.set_index([pfname, 'yw'], inplace=False)
+
+    # rename_dict = {
+    #     "MktRF": "beta_MktRF", 
+    #     "SMB": "beta_SMB", 
+    #     "HML": "beta_HML", 
+    #     "RMW": "beta_RMW", 
+    #     "CMA": "beta_CMA", 
+    #     "HKR": "beta_HKR"
+    # }
+    # new_df_betas = df_betas.rename(columns={col: new_name for col, new_name in rename_dict.items() if col in df_betas.columns})
+
+    # new_eret_we3 = eret_we.set_index(["pfkki3me3mb", "yw"], inplace=False)
+    # merged_df = pd.merge(new_df_betas, new_eret_we3, left_index=True, right_index=True, how='inner').rename(columns={"Mkt.RF": "MktRF"})
+    # merged_df['eretw_pred'] = eval("alpha + beta_MktRF * MktRF + beta_SMB * SMB + beta_HML * HML  + beta_HKR * HKR",  merged_df.to_dict('series'))
+    # df_betas = pd.merge(df_betas, merged_df[['eretw_pred']], left_index=True, right_index=True, how='inner')
+    
     fmb = FamaMacBeth.from_formula(formula, df_betas).fit(cov_type='kernel')
     return fmb, df_betas
 
-def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, log_returns = False, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
-    eret_we, stoxwe_add, eret_we_pct = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts, log_returns = log_returns)
+def estimate_factor_betas_and_predict_returns(results_df, factor_returns, portfolio_column, formula):
+    """
+    Estimate factor betas and predict returns based on a specified factor model.
+    
+    Parameters:
+    results_df (pd.DataFrame): DataFrame containing the regression results
+    factor_returns (pd.DataFrame): DataFrame containing factor returns
+    portfolio_column (str): Name of the column containing portfolio identifiers
+    formula (str): Formula specifying the factor model (e.g., "eretw ~ 1 + MktRF + SMB + HML")
+    
+    Returns:
+    pd.DataFrame: DataFrame with estimated betas and predicted returns
+    """
+    # Extract factors from the formula
+    factors = re.findall(r'\b([A-Za-z]+)\b', formula.split('~')[1])
+    factors = [f for f in factors if f != '1']  # Remove the intercept term if present
+    
+    # Define rename dictionary for beta columns
+    rename_dict = {factor: f"beta_{factor}" for factor in factors}
+    
+    # Set index and rename columns in one step
+    df_betas = (results_df.set_index([portfolio_column, 'yw'])
+                          .rename(columns={**rename_dict}))
+    #df_betas = (results_df.set_index([portfolio_column, 'yw'])
+                        #   .rename(columns={**rename_dict, 'Mkt.RF': 'MktRF'}))
+    
+    # Set index for factor_returns and select only necessary columns
+    factor_returns_subset = factor_returns.rename(columns = {'Mkt.RF': 'MktRF'}).set_index([portfolio_column, "yw"])[factors + ['eretw']]
+    
+    # Merge dataframes
+    merged_df = pd.merge(df_betas, factor_returns_subset, left_index=True, right_index=True, how='inner')
+    
+    # Generate the formula for return prediction
+    pred_formula = 'alpha + ' + ' + '.join([f"beta_{factor} * {factor}" for factor in factors if f"beta_{factor}" in merged_df.columns])
+    
+    # Calculate predicted returns using pandas eval and add to df_betas
+    df_betas['eretw_pred'] = merged_df.eval(pred_formula)
+
+    df_betas.columns = [col[5:] if col.startswith('beta_') else col for col in df_betas.columns]
+
+    return df_betas
+
+    # Iterate over each unique value of pfkk3me3mb
+    # for pf_name in eret_we2[pfname].unique():
+    #     # Subset the DataFrame for the current pfkk3me3mb
+    #     subset_data = eret_we2[eret_we2[pfname] == pf_name]
+        
+    #     # Initialize and fit the RollingOLS model
+    #     mod = RollingOLS.from_formula(formula, data=subset_data, window=window_size, expanding=False)
+    #     rres = mod.fit(cov_type="HC0", method="pinv", params_only=True)
+        
+    #     # Assuming your DataFrame's index contains the time window identifier 'yw'
+    #     # Extract coefficients for each window and create a DataFrame
+    #     for idx, params in rres.params.iterrows():
+    #         if case == "ff3":
+    #             results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR']])
+    #         elif case == "ff5":
+    #             results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['SMB'], params['HML'], params['HKR'], params['CMA'], params['RMW']])
+    #         elif case == "ff1":
+    #             results_list.append([idx, pf_name, params['Intercept'], params['MktRF'], params['HKR']])
+
+    # Convert the list of results into a DataFrame
+    # if case == "ff3":
+    #     results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR'])
+    # elif case == "ff5":
+    #     results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'])
+    # elif case == "ff1":
+    #     results_df = pd.DataFrame(results_list, columns=['yw', pfname, 'alpha', 'MktRF', 'HKR'])
+        
+    # results_df = results_df.merge(eret_we[['yw', pfname, 'eretw']], on=['yw', pfname], how='left')
+    # results_df.dropna(inplace=True) 
+    # df_betas = results_df.set_index([pfname, 'yw'], inplace=False)
+    # Multiply all the columns (if present) by 100 to get the percentage values, if they belong to the list: 'alpha', 'MktRF', 'SMB', 'HML', 'HKR', 'CMA', 'RMW'
+    # fmb = FamaMacBeth.from_formula(formula, df_betas).fit(cov_type='kernel')
+    # return fmb, df_betas
+
+def famaMacBethFull(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, oos, frac_train, log_returns = False, formula = None, kki_cuts = [0, 0.2, 0.4, 0.6, 0.8, 1], window_size = 52, add_innerkk_pf = False):
+    eret_we, stoxwe_add, eret_we_pct = rp.process_stoxwe(stoxwe_post2005short, cequity_mapper, topic_map, ffm, pfname, add_innerkk_pf, kki_cuts, log_returns = log_returns, oos = oos, frac_train = frac_train)
     print("Finished processing stoxwe")
     fmb, df_betas = rp.famaMacBeth(eret_we, pfname, formula = formula, window_size=window_size)
     print("Finished Fama-MacBeth")
     return fmb, df_betas, eret_we, stoxwe_add, eret_we_pct
 
-def famaMacBethMultiCase(pfname, add_innerkk_pf, cuts, cequity_mapper, ff3fw, ff5fw, stoxwe_orig, topic_map, log_returns = False):
+def famaMacBethMultiCase(pfname, add_innerkk_pf, cuts, cequity_mapper, ff3fw, ff5fw, stoxwe_orig, topic_map, oos, frac_train, log_returns = False):
     print("Running Fama-MacBeth regressions: 5 factors")
-    fmb_5, df_betas5, eret_we5, stoxwe_add, eret_we_pct5 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff5fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
+    fmb_5, df_betas5, eret_we5, stoxwe_add, eret_we_pct5 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff5fw, pfname, oos, frac_train, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
     print("Running Fama-MacBeth regressions: 3 factors")
-    fmb_3, df_betas3, eret_we3, _, eret_we_pct3 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff3fw, pfname, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
+    fmb_3, df_betas3, eret_we3, _, eret_we_pct3 = rp.famaMacBethFull(stoxwe_orig, cequity_mapper, topic_map, ff3fw, pfname, oos, frac_train, kki_cuts = cuts, window_size = 52*2, add_innerkk_pf = add_innerkk_pf, log_returns = log_returns)
     fmb_1, df_betas1 = rp.famaMacBeth(eret_we5, pfname, formula = "eretw ~ 1 + MktRF + HKR", window_size=52*2)
     print("Running Fama-MacBeth regressions: 1 factor")
     return fmb_5, fmb_3, fmb_1, df_betas5, df_betas3, df_betas1, eret_we5, eret_we3, stoxwe_add, eret_we_pct5, eret_we_pct3

@@ -5,12 +5,17 @@ from scipy.stats import kurtosis, ttest_1samp
 # Date and time operations
 from datetime import datetime
 import traceback
-
 # Plotting and visualization
 import matplotlib.pyplot as plt
 import seaborn as sns
 from plotnine import ggplot, aes, geom_tile, geom_text, scale_fill_gradient2, labs, theme, element_text
 import matplotlib.dates as mdates
+import pandas as pd
+import statsmodels.formula.api as smf
+import statsmodels.stats.api as sms
+from statsmodels.iolib.summary2 import summary_col
+import os
+
 
 # Utilities and performance optimization
 import risk_pricing as rp
@@ -462,8 +467,8 @@ def to_percentage(x):
     return f"{x * 100:.2f}\\%"
 
 @announce_execution
-def explore_fmb(fmb_list, figfolder):
-    tex_fmb_results(fmb_list, figfolder)
+def explore_fmb(fmb_list, model_vector, figfolder):
+    tex_fmb_results(fmb_list, model_vector, figfolder)
 
 def explore_stoxda(stoxda, cequity_mapper, topic_map, figfolder):
     # Plot the Amazon stock prices
@@ -492,7 +497,7 @@ def preprocess_stoxda(stoxda, cequity_mapper, topic_map):
 
 from stargazer_c.stargazer import Stargazer
 
-def tex_fmb_results(fmb_list, figfolder):
+def tex_fmb_results(fmb_list, model_vector, figfolder):
 
     stargazer = Stargazer(fmb_list)
     stargazer.significant_digits(5)
@@ -506,7 +511,7 @@ def tex_fmb_results(fmb_list, figfolder):
     # stargazer.show_footer = False
     # stargazer.dep_var_name = "Dep. var: Portfolio weekly excess returns"
     # Create a vector with "model_1", "model_2", with the length of fmb_list:
-    model_vector = ["Mkt", "FF3", "FF5"]
+    # model_vector = ["Mkt", "FF3", "FF5"]
     stargazer.custom_columns(model_vector)
     result = stargazer.render_latex()
     # Save to the right place:
@@ -1087,12 +1092,59 @@ def create_long_pfname(pfname, pf_type):
     else:
         return pfname
     
-def setup(quantiles, modelname, pfname, suffix = "_HKR_SB"):
+def setup(quantiles, modelname, pfname, oos, frac_train, suffix = "_HKR_SB"):
     base_path = "/Users/pedrovallocci/Documents/PhD (local)/Research/Github/KnowledgeKRisk_10Ks/text/"
-    dir_path = os.path.join(base_path, f"{modelname}_{quantiles}tiles_{pfname}{suffix}")
+    if oos: 
+        dir_path = os.path.join(base_path, f"{modelname}_{quantiles}tiles_{pfname}{suffix}_oos_{frac_train*100:.0f}")    
+        print(f"Running model {modelname} with {quantiles} quantiles and {pfname} portfolio, OOS with {frac_train*100:.0f}% training data")
+    else:
+        dir_path = os.path.join(base_path, f"{modelname}_{quantiles}tiles_{pfname}{suffix}")
+        print(f"Running model {modelname} with {quantiles} quantiles and {pfname} portfolio")
     os.makedirs(dir_path, exist_ok=True)
     figfolder = os.path.join(dir_path, "")
     add_innerkk_pf = not modelname.startswith("dicfull")
     cuts = np.linspace(0, 1, quantiles+1).tolist()
-    print(f"Running model {modelname} with {quantiles} quantiles and {pfname} portfolio")
     return figfolder, add_innerkk_pf, cuts
+
+@announce_execution
+def oos_predictive_power(dfs, pfname, fig_folder):
+    def run_regression(df):
+        if 'eretw' not in df.columns or 'eretw_pred' not in df.columns:
+            raise ValueError("Both 'eretw' and 'eretw_pred' must be in the DataFrame")
+        
+        df_reset = df.reset_index()
+        model = smf.ols(formula="eretw ~ eretw_pred", data=df_reset)
+        results = model.fit()
+        
+        cluster_var = pfname
+        cov_type = 'hac-panel'
+        print("Using hac-panel")
+        return results.get_robustcov_results(cov_type=cov_type, groups=df_reset[cluster_var], time=df_reset['yw'], maxlags = 4)
+
+    df_names = ['Mkt', 'Mkt+', 'FF3', 'FF3+', 'FF5', 'FF5+']
+    
+    if len(dfs) != len(df_names):
+        raise ValueError(f"Expected {len(df_names)} dataframes, but got {len(dfs)}")
+
+    results_list = [run_regression(df) for df in dfs]
+
+    summ = summary_col(results_list, 
+                       model_names=df_names,
+                       stars=True,
+                       float_format='%0.4f')
+
+    summ.tables[0].title = "Actual vs. Predicted"
+    summ.tables[0].index = summ.tables[0].index.str.replace('eretw_pred', 'Predicted')
+
+    latex_table = summ.as_latex()
+    html_table = summ.as_html()
+
+    os.makedirs(fig_folder, exist_ok=True)
+
+    with open(os.path.join(fig_folder, 'oos_predictive_power.tex'), 'w') as f:
+        f.write(latex_table)
+
+    with open(os.path.join(fig_folder, 'oos_predictive_power.html'), 'w') as f:
+        f.write(html_table)
+
+    print(f"LaTeX and HTML tables have been saved in {fig_folder}")
